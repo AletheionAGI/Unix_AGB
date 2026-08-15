@@ -1,0 +1,28 @@
+Unix-AGB — Aletheion Guard Bridge
+Copyright © 2026 Felipe Maya Muniz.
+
+Unix-AGB and its original source code and project documentation were created by
+Felipe Maya Muniz. The architecture reuses concepts and research results from
+the Aletheion State Models (ASM), ASM-CM, and ASM Memory Bridge projects.
+
+The open-source distribution is licensed under the GNU Affero General Public
+License version 3.0 only (`AGPL-3.0-only`), as stated in LICENSE. Alternative
+commercial licensing may be available from AletheionAGI under a separate signed
+written agreement; see LICENSE-COMMERCIAL.md.
+
+Except where explicitly stated otherwise, this notice applies to original
+Unix-AGB source code and project documentation. Linux, Ubuntu, AppArmor, BPF,
+eBPF, systemd, and other third-party names, software, specifications, datasets,
+and assets remain subject to their respective owners, trademarks, copyright
+notices, and licenses.
+
+Alternative commercial licensing applies only to components for which Felipe
+Maya Muniz or AletheionAGI owns, controls, or is authorized to license the
+necessary rights. It does not relicense third-party code or supersede the
+original licenses and notices of Linux, Ubuntu, their components, bundled
+dependencies, or external contributions.
+
+UNIX® is a registered trademark of The Open Group. The name “Unix-AGB” is a
+working project name and does not represent UNIX certification or endorsement.
+
+Commercial licensing contact: contact@aletheionagi.com
