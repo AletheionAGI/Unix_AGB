@@ -4,14 +4,14 @@ Original date: 2026-08-15
 
 ## Current status
 
-Unix-AGB is at **Gate 0 — architecture and repository foundation**. The current
-artifact is a design proposal; implementation and end-to-end security claims
-remain pending.
+Unix-AGB has completed the reviewable **Gate 0 — architecture and repository
+foundation** artifact. Gate 1 remains pending: current executable code accepts
+synthetic input only and performs no real observation or enforcement.
 
 | Gate | Scope | Status |
 |---:|---|---|
-| 0 | Architecture, licensing, contracts, threat model, benchmark plan | In progress |
-| 1 | Ubuntu observer and canonical event pipeline | Not started |
+| 0 | Architecture, licensing, contracts, threat model, benchmark plan | Complete |
+| 1 | Ubuntu observer and canonical event pipeline | Prototype |
 | 2 | ASM-CM state runtime and persistence | Not started |
 | 3 | Explicit policy engine and dry-run decisions | Not started |
 | 4 | Narrow deterministic enforcement pilot | Not started |
@@ -30,6 +30,12 @@ remain pending.
 Exit criterion: contracts, risks, non-claims, benchmark gates, and the initial
 implementation skeleton are reviewable and internally consistent.
 
+Implemented Gate 0 artifacts include versioned JSON Schemas, deterministic
+fixtures, an append-only JSONL prototype store, stable process namespaces, an
+audit-only Rust pipeline, a fake Python ASM boundary, a fake enforcer, and
+automated tests. “Complete” here describes the repository-foundation gate; it
+does not validate the security system or promote the project to Gate 1.
+
 ## Gate 1 — Ubuntu observer
 
 - collect a minimal process/exec/file/network event subset;
@@ -38,6 +44,11 @@ implementation skeleton are reviewable and internally consistent.
 - append exact events and provenance to the canonical store;
 - expose audit-only CLI and health diagnostics;
 - measure drops, throughput, CPU, memory, and storage overhead.
+
+The repository includes a cooperative laboratory slice with real Rust
+subprocesses, `strace` normalization, the Rust gateway, and process-local
+Landlock denial. A production observer and system-wide enforcement adapter
+remain outstanding.
 
 No automatic blocking occurs in this gate.
 

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unixagb.com/schemas/v1/security-state-summary.schema.json",
+  "title": "SecurityStateSummary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "namespace_id", "state_revision", "risk_band", "signals", "engine", "updated_at"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "namespace_id": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "state_revision": { "type": "integer", "minimum": 1 },
+    "risk_band": { "enum": ["unknown", "normal", "monitor", "elevated", "restricted", "quarantined"] },
+    "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "signals": { "type": "array", "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },
+    "evidence_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },
+    "engine": { "enum": ["fake", "asm-cm"] },
+    "checkpoint_fingerprint": { "type": ["string", "null"], "maxLength": 256 },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}

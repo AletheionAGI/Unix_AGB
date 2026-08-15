@@ -19,10 +19,15 @@ Optional LLM reader        human-readable explanation outside the hot path
 
 ## Status
 
-This repository currently contains the initial architectural specification.
-Unix-AGB is experimental research and is not yet a production security system.
-Security, performance, state compactness, isolation, and detection claims must
-be established by implementation and reproducible benchmarks.
+This repository contains the Gate 0 architecture, versioned contracts, and an
+audit-only functional skeleton. The skeleton accepts synthetic events, appends
+them to a canonical JSONL store, updates isolated deterministic state, emits a
+policy decision, and records a fake enforcement result. It does not observe a
+real host or block any operation.
+
+Unix-AGB remains experimental research and is not a production security
+system. Security efficacy, production performance, state compactness, and
+detection claims have not been established.
 
 Read the complete Portuguese specification:
 [docs/Unix_AGB_Architecture_Specification_PTBR.md](docs/Unix_AGB_Architecture_Specification_PTBR.md).
@@ -55,11 +60,81 @@ See [ROADMAP.md](ROADMAP.md) for gates and deliverables.
 ## Repository map
 
 ```text
-docs/          architecture and supporting specifications
+configs/       example runtime configuration
+docs/          architecture decisions and operational contracts
+fixtures/      deterministic synthetic event sequences
+python/        fake ASM Unix-socket service for integration work
+schemas/v1/    versioned JSON Schema contracts
+scripts/       synthetic generator and plumbing benchmark
+src/           Rust gateway, store, state, policy, enforcer, and CLI
+tests/         Python contract and fake-ASM tests
 ```
 
-The implementation layout proposed by the architecture will be introduced
-incrementally as roadmap gates begin.
+Key documents: [contracts](docs/contracts.md),
+[event model](docs/event-model.md), [namespaces](docs/namespaces.md),
+[persistence](docs/persistence.md), [runtime stack ADR](docs/ADR-0001-runtime-stack.md),
+[threat model](THREAT_MODEL.md), and [benchmark protocol](BENCHMARK.md).
+
+## Gate 0 quickstart
+
+Requirements: Rust stable and Python 3.11 or newer. No privileged Linux hooks
+are used in this milestone.
+
+```bash
+make test
+python3 scripts/generate_synthetic_events.py --count 3 \
+  | cargo run --quiet --bin agb-gateway -- --store var/events.jsonl
+cargo run --quiet --bin agbctl -- status
+cargo run --quiet --bin agbctl -- events tail --limit 3
+```
+
+Run the fake ASM boundary as a separate Unix-domain JSONL service:
+
+```bash
+PYTHONPATH=python python3 -m agb_fake_asm.server \
+  --socket var/run/fake-asm.sock
+```
+
+`make benchmark` measures only the deterministic fake-engine plumbing. It is
+not evidence of security efficacy or production performance.
+
+## Reproducible causal proof
+
+The first controlled proof uses two isolated processes that perform the same
+terminal action: opening `/run/secrets/api-token`. Their prior histories differ:
+
+```text
+benign      exec → local configuration read → credential read  → shadow ALLOW
+suspicious  exec → external network connect → credential read  → shadow DENY
+```
+
+Run `make causal-proof`. The executable verifies that the terminal operation
+and resource are identical before accepting the divergent outcome, and prints
+the causal evidence IDs used in each decision. The backend remains fake and
+reports `applied: false`; this is a reproducible proof of trajectory-dependent
+policy behavior, not real Linux enforcement or learned causal inference.
+
+The live laboratory slice is available with `make live-proof`. It launches two
+real Rust subprocesses, observes `execve`, `openat`, and `connect` through
+`strace`, sends normalized events through the gateway, and installs a
+process-local Landlock read denial only after the shadow decision. The report
+is written to `var/live-proof/REPORT.json`. This is cooperative laboratory
+evidence, not production telemetry or system-wide enforcement.
+
+The first external-enforcement laboratory proof is `make seccomp-proof`. It
+uses a separate broker process and seccomp user notification to deny `openat`
+with `EACCES` for the restricted case. The broker now sends the real trajectory
+to `agb-gateway`, which persists three events and returns the causal policy
+decision before the kernel response. Reports and gateway JSONL stores are
+written to `var/seccomp-proof/`. It is limited to one disposable file and does
+not install a system-wide policy.
+
+`make linux-capabilities` reports whether the host exposes the prerequisites for
+the next observer step. The BPF laboratory observer is defined in
+[`scripts/observe_live_bpf.bt`](scripts/observe_live_bpf.bt); it observes
+`execve`, `openat`, and `connect` without blocking them. The external
+enforcement boundary and its promotion criteria are documented in
+[`docs/ADR-0002-external-enforcement.md`](docs/ADR-0002-external-enforcement.md).
 
 ## Scientific and security posture
 

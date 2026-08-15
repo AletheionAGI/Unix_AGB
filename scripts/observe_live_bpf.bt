@@ -1,0 +1,19 @@
+// Gate 1 laboratory observer. It emits newline-delimited records that can be
+// normalized by the Event Gateway. It observes; it never blocks a syscall.
+// Requires: bpftrace, tracefs, and the privileges required by the host.
+
+tracepoint:syscalls:sys_enter_execve
+{
+  printf("AGB_BPF|process.exec|pid=%d|exe=%s\n", pid, str(args->filename));
+}
+
+tracepoint:syscalls:sys_enter_openat
+{
+  printf("AGB_BPF|file.open|pid=%d|path=%s\n", pid, str(args->filename));
+}
+
+tracepoint:syscalls:sys_enter_connect
+{
+  printf("AGB_BPF|network.connect|pid=%d|fd=%d\n", pid, args->fd);
+}
+

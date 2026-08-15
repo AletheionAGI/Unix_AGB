@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unixagb.com/schemas/v1/enforcement-record.schema.json",
+  "title": "EnforcementRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "decision_id", "backend", "requested_effect", "applied", "policy_revision", "recorded_at"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "decision_id": { "type": "string", "pattern": "^dec:[A-Za-z0-9._-]+$" },
+    "backend": { "enum": ["fake", "apparmor", "bpf-lsm", "cgroup", "systemd"] },
+    "requested_effect": { "enum": ["ALLOW", "DENY", "AUDIT", "LIMIT", "CHALLENGE", "FREEZE", "QUARANTINE", "KILL", "ABSTAIN"] },
+    "applied": { "type": "boolean" },
+    "latency_us": { "type": ["integer", "null"], "minimum": 0 },
+    "policy_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "recorded_at": { "type": "string", "format": "date-time" }
+  }
+}

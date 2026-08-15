@@ -1,0 +1,9 @@
+{
+  "mode": "audit-only",
+  "schema_version": "1.0",
+  "canonical_store": "var/events.jsonl",
+  "asm_socket": "var/agb-asm.sock",
+  "max_event_bytes": 65536,
+  "accepted_provenance": ["synthetic"],
+  "enforcement_backend": "fake"
+}

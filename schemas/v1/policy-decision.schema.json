@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unixagb.com/schemas/v1/policy-decision.schema.json",
+  "title": "PolicyDecision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "decision_id", "namespace_id", "policy_revision", "state_revision", "mode", "effect", "scope", "reason_codes", "evidence_ids", "fail_closed", "created_at"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "decision_id": { "type": "string", "pattern": "^dec:[A-Za-z0-9._-]+$" },
+    "namespace_id": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "policy_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "state_revision": { "type": "integer", "minimum": 0 },
+    "mode": { "enum": ["audit", "enforce"] },
+    "effect": { "enum": ["ALLOW", "DENY", "AUDIT", "LIMIT", "CHALLENGE", "FREEZE", "QUARANTINE", "KILL", "ABSTAIN"] },
+    "scope": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "reason_codes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },
+    "evidence_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },
+    "fail_closed": { "type": "boolean" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
