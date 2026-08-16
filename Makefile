@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list
+.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server
 
 test: test-python test-rust
 
@@ -47,3 +47,6 @@ broker-restart:
 
 cache-list:
 	AGB_ADMIN_TOKEN="$${AGB_ADMIN_TOKEN:?set AGB_ADMIN_TOKEN}" cargo run --quiet --bin agb-cachectl -- list var/policy-cache.jsonl
+
+admin-server:
+	cargo run --quiet --bin agb-admin-server -- var/agb-admin.sock var/policy-cache.jsonl var/admin-audit.jsonl
