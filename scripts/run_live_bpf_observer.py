@@ -70,6 +70,7 @@ def main() -> None:
     deadline = time.monotonic() + args.duration
     lost_events = 0
     interrupted = False
+    normalization_errors = 0
     try:
         while process.poll() is None and time.monotonic() < deadline:
             ready = selector.select(timeout=min(0.25, max(0, deadline - time.monotonic())))
@@ -92,7 +93,9 @@ def main() -> None:
             try:
                 event = normalize(line, sequences, sensitive_paths=set(args.sensitive_path))
             except (KeyError, OSError, ValueError) as error:
-                print(f"live_bpf_observer: {error}", file=sys.stderr)
+                normalization_errors += 1
+                if normalization_errors <= 5:
+                    print(f"live_bpf_observer: {error}", file=sys.stderr)
                 continue
             if event is None:
                 continue
@@ -136,6 +139,12 @@ def main() -> None:
         print(remaining_errors, end="", file=sys.stderr)
         for match in re.finditer(r"(?:Lost|lost event count:)\s*(\d+)", remaining_errors):
             lost_events = max(lost_events, int(match.group(1)))
+    if normalization_errors > 5:
+        print(
+            f"live_bpf_observer: suppressed {normalization_errors - 5} additional "
+            "short-lived process normalization errors",
+            file=sys.stderr,
+        )
     status = (
         "stopped"
         if (return_code == 0 or timed_out or interrupted) and count and lost_events == 0

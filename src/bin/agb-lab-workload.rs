@@ -22,6 +22,10 @@ fn value_after(args: &[String], flag: &str) -> Result<String, String> {
         .ok_or_else(|| format!("missing {flag}"))
 }
 
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|argument| argument == flag)
+}
+
 fn apply_read_denial() -> Result<(), String> {
     #[cfg(not(target_arch = "x86_64"))]
     return Err("the laboratory Landlock adapter currently supports x86_64 only".into());
@@ -121,6 +125,17 @@ fn run() -> Result<(), String> {
                 "errno": error.raw_os_error()
             })
         ),
+    }
+    io::stdout().flush().map_err(|error| error.to_string())?;
+    if has_flag(&args, "--hold-for-release") {
+        let mut release = String::new();
+        io::stdin()
+            .lock()
+            .read_line(&mut release)
+            .map_err(|error| error.to_string())?;
+        if release.trim() != "RELEASE" {
+            return Err("expected RELEASE after controlled observation window".into());
+        }
     }
     Ok(())
 }

@@ -96,6 +96,7 @@ def main() -> None:
         stdout=subprocess.DEVNULL,
     )
     ground_truth: dict[int, str] = {}
+    held_processes: list[subprocess.Popen[str]] = []
     try:
         time.sleep(2)
         if observer.poll() is not None:
@@ -113,6 +114,7 @@ def main() -> None:
                     str(config),
                     "--port",
                     str(port),
+                    "--hold-for-release",
                 ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -125,9 +127,19 @@ def main() -> None:
             ground_truth[process.pid] = case
             process.stdin.write("ALLOW\n")
             process.stdin.flush()
-            remainder = process.communicate(timeout=5)[0]
-            if process.returncode != 0 or '"open_result":"allowed"' not in remainder:
-                raise RuntimeError(f"controlled workload failed: {case}: {remainder.strip()}")
+            result = process.stdout.readline()
+            if '"open_result":"allowed"' not in result:
+                raise RuntimeError(f"controlled workload failed: {case}: {result.strip()}")
+            held_processes.append(process)
+        time.sleep(2)
+        for process in held_processes:
+            assert process.stdin
+            process.stdin.write("RELEASE\n")
+            process.stdin.flush()
+        for process in held_processes:
+            process.communicate(timeout=5)
+            if process.returncode != 0:
+                raise RuntimeError(f"controlled workload PID {process.pid} failed on release")
         if observer.wait(timeout=args.duration + 10) != 0:
             raise RuntimeError("BPF observer rejected the protected capture")
         listener_thread.join(timeout=5)
@@ -138,6 +150,10 @@ def main() -> None:
         if observer.poll() is None:
             observer.terminate()
             observer.wait(timeout=5)
+        for process in held_processes:
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
 
     collector_revision = subprocess.check_output(
         [sys.executable, str(root / "scripts/fingerprint_collector.py")], text=True
