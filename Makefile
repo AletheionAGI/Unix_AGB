@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants
+.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config
 
 test: test-python test-rust
 
@@ -73,3 +73,7 @@ uid-gid-combinations:
 
 uid-gid-variants:
 	python3 scripts/run_uid_gid_variants.py
+
+fail-closed-config:
+	cargo build --quiet --bin agb-admin-server
+	python3 scripts/test_fail_closed_admin_config.py
