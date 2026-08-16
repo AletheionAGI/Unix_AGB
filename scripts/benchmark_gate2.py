@@ -190,6 +190,17 @@ def evaluate(engine_factory: Any, trajectories: list[dict[str, Any]]) -> dict[st
         counts["fn"] += int(actual and (not predicted))
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
+
+    def latency_summary(samples: list[float]) -> dict[str, float | int | None]:
+        if not samples:
+            return {"sample_count": 0, "p50": None, "p95": None, "p99": None}
+        return {
+            "sample_count": len(samples),
+            "p50": statistics.median(samples),
+            "p95": percentile(samples, 0.95),
+            "p99": percentile(samples, 0.99),
+        }
+
     return {
         "engine": engine.name,
         "confusion": {"tp": tp, "fp": fp, "tn": tn, "fn": fn, "abstain": abstain},
@@ -197,21 +208,9 @@ def evaluate(engine_factory: Any, trajectories: list[dict[str, Any]]) -> dict[st
         "precision": tp / (tp + fp) if tp + fp else 0.0,
         "recall": tp / (tp + fn) if tp + fn else 0.0,
         "false_positive_rate": fp / (fp + tn) if fp + tn else 0.0,
-        "latency_us": {
-            "p50": statistics.median(latencies),
-            "p95": percentile(latencies, 0.95),
-            "p99": percentile(latencies, 0.99),
-        },
-        "ingest_latency_us": {
-            "p50": statistics.median(ingest_latencies),
-            "p95": percentile(ingest_latencies, 0.95),
-            "p99": percentile(ingest_latencies, 0.99),
-        },
-        "query_latency_us": {
-            "p50": statistics.median(query_latencies),
-            "p95": percentile(query_latencies, 0.95),
-            "p99": percentile(query_latencies, 0.99),
-        },
+        "latency_us": latency_summary(latencies),
+        "ingest_latency_us": latency_summary(ingest_latencies),
+        "query_latency_us": latency_summary(query_latencies),
         "python_peak_bytes": peak,
         "accelerator_memory": (
             engine.accelerator_memory() if hasattr(engine, "accelerator_memory") else None

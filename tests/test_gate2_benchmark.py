@@ -51,6 +51,19 @@ class Gate2BenchmarkTests(unittest.TestCase):
             results[SequenceRuleEngine.name]["confusion"],
         )
 
+    def test_dataset_without_credential_queries_reports_empty_query_latency(self) -> None:
+        trajectory = self.trajectories[0]
+        without_query_labels = {
+            **trajectory,
+            "events": [{**event, "labels": []} for event in trajectory["events"]],
+        }
+        result = evaluate(EventLocalEngine, [without_query_labels])
+        self.assertEqual(
+            result["query_latency_us"],
+            {"sample_count": 0, "p50": None, "p95": None, "p99": None},
+        )
+        self.assertEqual(result["latency_us"]["sample_count"], len(trajectory["events"]))
+
     def test_restart_corruption_gap_and_namespace_proofs(self) -> None:
         self.assertTrue(all(persistence_proofs(self.trajectories).values()))
 
