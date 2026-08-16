@@ -18,7 +18,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="agb-uid-gid-variants-") as d:
             base=Path(d); base.chmod(0o755); lab=base/"server"; shutil.copy2(binary,lab); lab.chmod(0o755)
             client=base/"client.py"; shutil.copy2(root/"scripts/admin_request.py",client); client.chmod(0o755)
-            results=[]
+            results=[]; audits={}
             for name, env_extra in (("uid_gid", {"AGB_ADMIN_UIDS":str(accounts[0].pw_uid),"AGB_ADMIN_GIDS":str(gid)}),("gid_only", {"AGB_ADMIN_GIDS":str(gid)}),("uid_only", {"AGB_ADMIN_UIDS":str(accounts[0].pw_uid)})):
                 sock=base/(name+".sock"); audit=base/(name+".audit"); cache=base/(name+".cache")
                 env={**os.environ,"AGB_ADMIN_TOKEN":"variant-token",**env_extra}; p=subprocess.Popen([str(lab),str(sock),str(cache),str(audit)],env=env)
@@ -30,8 +30,18 @@ def main():
                     for acct in accounts:
                         response=json.loads(subprocess.check_output(["runuser","-u",acct.pw_name,"--","python3",str(client),str(sock),"variant-token"],text=True))
                         results.append({"case":name,"uid":acct.pw_uid,"gid":acct.pw_gid,"response":response})
+                    p.terminate(); p.wait(timeout=3); sock.unlink(missing_ok=True)
+                    p=subprocess.Popen([str(lab),str(sock),str(cache),str(audit)],env=env)
+                    for _ in range(100):
+                        if sock.exists(): break
+                        time.sleep(.02)
+                    sock.chmod(0o666)
+                    restart_response=json.loads(subprocess.check_output(["runuser","-u",accounts[0].pw_name,"--","python3",str(client),str(sock),"variant-token"],text=True))
+                    results.append({"case":name,"restart":True,"uid":accounts[0].pw_uid,"gid":accounts[0].pw_gid,"response":restart_response})
+                    audits[name]=[json.loads(line) for line in audit.read_text().splitlines() if line.strip()]
                 finally: p.terminate(); p.wait(timeout=3)
-            print(json.dumps({"status":"passed","shared_gid":gid,"results":results},indent=2))
+            if any(len(events) < 3 for events in audits.values()): raise SystemExit("audit log missing variant events")
+            print(json.dumps({"status":"passed","shared_gid":gid,"results":results,"audit_events":audits},indent=2))
     finally:
         for u in users: subprocess.run(["userdel",u],check=False)
         subprocess.run(["groupdel",group],check=False)
