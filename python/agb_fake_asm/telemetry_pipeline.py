@@ -8,7 +8,12 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from .independent_corpus import ALLOWED_LABELS, REAL_PROVENANCE, IndependentCorpusError
+from .independent_corpus import (
+    ALLOWED_COVERAGE_SCOPES,
+    ALLOWED_LABELS,
+    REAL_PROVENANCE,
+    IndependentCorpusError,
+)
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -62,6 +67,10 @@ def summarize_candidate(candidate: dict[str, Any], *, max_resources: int = 8) ->
         "status": candidate["status"],
         "split": candidate["split"],
         "collector_revision": candidate["collector_revision"],
+        "coverage_scope": candidate["coverage_scope"],
+        "coverage_config_sha256": candidate["coverage_config_sha256"],
+        "subject_scope": candidate["subject_scope"],
+        "evaluation_purpose": candidate["evaluation_purpose"],
         "namespace_id": first["namespace_id"],
         "subject": {key: subject.get(key) for key in ("pid", "uid", "gid", "exe")},
         "event_count": len(events),
@@ -86,6 +95,8 @@ def build_candidates(
     calibration_percent: int = 20,
     min_events: int = 1,
     max_events: int = 256,
+    coverage_scope: str = "system-wide",
+    protected_executables: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     if not collector_revision.strip():
         raise IndependentCorpusError("collector revision is required")
@@ -95,6 +106,19 @@ def build_candidates(
         raise IndependentCorpusError("minimum events must be positive")
     if max_events < min_events:
         raise IndependentCorpusError("maximum events must be at least minimum events")
+    if coverage_scope not in ALLOWED_COVERAGE_SCOPES:
+        raise IndependentCorpusError("invalid coverage scope")
+    protected_executables = protected_executables or set()
+    coverage_config_sha256 = hashlib.sha256(
+        json.dumps(
+            {
+                "coverage_scope": coverage_scope,
+                "protected_executables": sorted(protected_executables),
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     seen_ids: set[str] = set()
@@ -123,6 +147,17 @@ def build_candidates(
             raise IndependentCorpusError(f"namespace {namespace}: sequence gap")
         namespace_bucket = int(hashlib.sha256(namespace.encode()).hexdigest()[:8], 16) % 100
         split = "calibration" if namespace_bucket < calibration_percent else "test"
+        executable = str(observed[0].get("subject", {}).get("exe", ""))
+        subject_scope = (
+            "protected"
+            if coverage_scope == "protected-only" or executable in protected_executables
+            else "external"
+        )
+        evaluation_purpose = (
+            "security-efficacy"
+            if subject_scope == "protected"
+            else "false-positive-monitoring"
+        )
         for start in range(0, len(observed), max_events):
             source_window = observed[start : start + max_events]
             identity = hashlib.sha256(
@@ -140,6 +175,10 @@ def build_candidates(
                     "status": "pending-review",
                     "split": split,
                     "collector_revision": collector_revision,
+                    "coverage_scope": coverage_scope,
+                    "coverage_config_sha256": coverage_config_sha256,
+                    "subject_scope": subject_scope,
+                    "evaluation_purpose": evaluation_purpose,
                     "events": window,
                 }
             )
@@ -156,6 +195,10 @@ def apply_reviews(
         "status",
         "split",
         "collector_revision",
+        "coverage_scope",
+        "coverage_config_sha256",
+        "subject_scope",
+        "evaluation_purpose",
         "events",
     }
     for index, candidate in enumerate(candidates, 1):
@@ -202,6 +245,10 @@ def apply_reviews(
             "family": by_id[candidate["trajectory_id"]]["family"],
             "split": candidate["split"],
             "collector_revision": candidate["collector_revision"],
+            "coverage_scope": candidate["coverage_scope"],
+            "coverage_config_sha256": candidate["coverage_config_sha256"],
+            "subject_scope": candidate["subject_scope"],
+            "evaluation_purpose": candidate["evaluation_purpose"],
             "events": candidate["events"],
         }
         for candidate in candidates

@@ -24,6 +24,21 @@ def main() -> None:
         parser.error("--max-resource-samples must be non-negative")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.review_template.parent.mkdir(parents=True, exist_ok=True)
+    existing_reviews: dict[str, dict[str, object]] = {}
+    if args.review_template.is_file():
+        for line in args.review_template.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                review = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (
+                isinstance(review, dict)
+                and review.get("label") in {"benign", "malicious"}
+                and isinstance(review.get("trajectory_id"), str)
+            ):
+                existing_reviews[review["trajectory_id"]] = review
     count = 0
     seen: set[str] = set()
     try:
@@ -49,18 +64,16 @@ def main() -> None:
                     raise IndependentCorpusError(f"duplicate candidate: {trajectory_id}")
                 seen.add(trajectory_id)
                 queue.write(json.dumps(summary, sort_keys=True) + "\n")
-                reviews.write(
-                    json.dumps(
-                        {
-                            "trajectory_id": trajectory_id,
-                            "label": "REVIEW_REQUIRED",
-                            "label_source": "REVIEW_REQUIRED",
-                            "family": "REVIEW_REQUIRED",
-                        },
-                        sort_keys=True,
-                    )
-                    + "\n"
+                review = existing_reviews.get(
+                    trajectory_id,
+                    {
+                        "trajectory_id": trajectory_id,
+                        "label": "REVIEW_REQUIRED",
+                        "label_source": "REVIEW_REQUIRED",
+                        "family": "REVIEW_REQUIRED",
+                    },
                 )
+                reviews.write(json.dumps(review, sort_keys=True) + "\n")
                 count += 1
     except (IndependentCorpusError, OSError) as error:
         parser.error(str(error))

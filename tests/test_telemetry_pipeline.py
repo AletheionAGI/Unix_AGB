@@ -34,6 +34,7 @@ class TelemetryPipelineTests(unittest.TestCase):
         self.assertEqual(len(first), 2)
         self.assertTrue(all(item["status"] == "pending-review" for item in first))
         self.assertTrue(all("label" not in item for item in first))
+        self.assertTrue(all(item["subject_scope"] == "external" for item in first))
 
     def test_reviews_are_joined_without_changing_split(self) -> None:
         candidates = build_candidates(
@@ -53,6 +54,18 @@ class TelemetryPipelineTests(unittest.TestCase):
         )
         self.assertEqual(corpus[0]["split"], candidate["split"])
         self.assertEqual(corpus[0]["label"], "benign")
+        self.assertEqual(corpus[0]["evaluation_purpose"], "false-positive-monitoring")
+
+    def test_exact_protected_executable_selects_security_efficacy(self) -> None:
+        item = observed("process:boot-a:10:100", 1)
+        executable = str(item["subject"]["exe"])
+        candidate = build_candidates(
+            [item],
+            collector_revision="revision:test",
+            protected_executables={executable},
+        )[0]
+        self.assertEqual(candidate["subject_scope"], "protected")
+        self.assertEqual(candidate["evaluation_purpose"], "security-efficacy")
 
     def test_long_processes_are_windowed_without_cross_split_leakage(self) -> None:
         namespace = "process:boot-a:10:100"

@@ -104,6 +104,12 @@ Artifacts with different coverage are not directly comparable unless the
 comparison explicitly accounts for that difference. Changing scope requires a
 new capture revision and cannot retroactively reinterpret an existing corpus.
 
+Independent trajectory protocol v2 records `coverage_scope`,
+`coverage_config_sha256`, `subject_scope`, and `evaluation_purpose` on every
+trajectory. `protected` maps to `security-efficacy`; `external` maps to
+`false-positive-monitoring`. These queues retain independent labels and metrics,
+but only security-efficacy test trajectories are eligible to promote Gate 2.
+
 ## Decision-aware retention
 
 The production observer may inspect the complete authorized host event stream,

@@ -61,7 +61,9 @@ build-independent-candidates:
 		--output "$${AGB_CANDIDATES:-var/telemetry/trajectory-candidates.jsonl}" \
 		--collector-revision "$${AGB_COLLECTOR_REVISION:-$$(python3 scripts/fingerprint_collector.py)}" \
 		--min-events "$${AGB_MIN_TRAJECTORY_EVENTS:-1}" \
-		--max-events "$${AGB_MAX_TRAJECTORY_EVENTS:-256}"
+		--max-events "$${AGB_MAX_TRAJECTORY_EVENTS:-256}" \
+		--coverage-scope "$${AGB_COVERAGE_SCOPE:-system-wide}" \
+		--protected-executables "$${AGB_PROTECTED_EXECUTABLES:-}"
 
 build-review-queue:
 	PYTHONPATH=python:scripts python3 scripts/build_review_queue.py \

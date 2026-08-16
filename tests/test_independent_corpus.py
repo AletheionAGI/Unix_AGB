@@ -21,6 +21,7 @@ def trajectory(
     label: str,
     *,
     source: str = "bpf",
+    subject_scope: str = "protected",
 ) -> dict[str, object]:
     observed = event(1, "process.exec", [])
     observed["event_id"] = f"evt:{trajectory_id}:1"
@@ -36,6 +37,12 @@ def trajectory(
         "family": "test-family",
         "split": split,
         "collector_revision": "collector:test-v1",
+        "coverage_scope": "system-wide",
+        "coverage_config_sha256": "a" * 64,
+        "subject_scope": subject_scope,
+        "evaluation_purpose": (
+            "security-efficacy" if subject_scope == "protected" else "false-positive-monitoring"
+        ),
         "events": [observed],
     }
 
@@ -59,7 +66,36 @@ class IndependentCorpusTests(unittest.TestCase):
             self.assertEqual(manifest["calibration"]["trajectories"], 1)
             self.assertEqual(manifest["test"]["trajectories"], 1)
             self.assertFalse(manifest["promotion_eligible"])
+            self.assertEqual(manifest["evaluation"]["security_efficacy"]["trajectories"], 2)
             self.assertEqual(len(load_independent_corpus(path, split="test")), 1)
+
+    def test_external_telemetry_is_counted_but_cannot_promote(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write(
+                [
+                    trajectory(
+                        "external-cal",
+                        "process:boot-a:10:100",
+                        "calibration",
+                        "benign",
+                        subject_scope="external",
+                    ),
+                    trajectory(
+                        "external-test",
+                        "process:boot-b:11:101",
+                        "test",
+                        "benign",
+                        subject_scope="external",
+                    ),
+                ],
+                directory,
+            )
+            manifest = freeze_manifest(path)
+            self.assertEqual(
+                manifest["evaluation"]["false_positive_monitoring"]["trajectories"], 2
+            )
+            self.assertEqual(manifest["evaluation"]["security_efficacy"]["trajectories"], 0)
+            self.assertFalse(manifest["promotion_eligible"])
 
     def test_synthetic_provenance_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

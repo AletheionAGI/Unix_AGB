@@ -7,7 +7,7 @@
   <title>Unix-AGB — revisão de trajetórias</title>
   <style>
     :root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background:#090d14; color:#e7edf7 }
-    * { box-sizing:border-box } body { margin:0 } button,input { font:inherit }
+    * { box-sizing:border-box } body { margin:0 } button,input,select { font:inherit }
     header { position:sticky; top:0; z-index:2; padding:18px 24px; background:#0d1420ee; border-bottom:1px solid #263247 }
     header div { max-width:1100px; margin:auto; display:flex; gap:16px; align-items:center; flex-wrap:wrap }
     h1 { font-size:19px; margin:0; flex:1 } .muted { color:#91a0b8 } progress { width:240px; accent-color:#62d6a8 }
@@ -26,16 +26,17 @@
   </style>
 </head>
 <body>
-<header><div><h1>Unix-AGB · revisão independente</h1><span id="counter"></span><progress id="progress"></progress></div></header>
+<header><div><h1>Unix-AGB · revisão independente</h1><select id="purpose"><option value="all">Todas as filas</option><option value="security-efficacy">Workloads protegidos</option><option value="false-positive-monitoring">Programas externos</option></select><span id="counter"></span><progress id="progress"></progress></div></header>
 <main>
   <p class="muted">Offline. O progresso fica somente neste navegador. Confirme evidências; não presuma que atividade incomum seja maliciosa.</p>
   <div id="notice" role="status"></div>
-  <section class="card">
+  <section class="card" id="card">
     <div class="grid">
       <div class="field"><b>Executável</b><span id="exe"></span></div>
       <div class="field"><b>Processo</b><span id="process"></span></div>
       <div class="field"><b>Janela</b><span id="window"></span></div>
       <div class="field"><b>Split</b><span id="split"></span></div>
+      <div class="field"><b>Fila de avaliação</b><span id="evaluation"></span></div>
     </div>
     <h3>Operações</h3><pre id="operations"></pre>
     <h3>Amostras de recursos</h3><pre id="resources"></pre>
@@ -57,14 +58,21 @@ let reviews=DATA.initial_reviews||JSON.parse(localStorage.getItem(KEY)||"{}"); l
 const $=id=>document.getElementById(id);
 function familyDefault(item){const exe=item.subject?.exe||"unknown"; return exe.split("/").filter(Boolean).pop()||"unknown"}
 function save(){localStorage.setItem(KEY,JSON.stringify(reviews))}
+function visibleIndexes(){const purpose=$("purpose").value;return DATA.items.map((_,i)=>i).filter(i=>purpose==="all"||DATA.items[i].evaluation_purpose===purpose)}
+function move(direction){const visible=visibleIndexes(), position=visible.indexOf(index), next=Math.max(0,Math.min(visible.length-1,position+direction));if(visible.length)index=visible[next];render()}
 function render(){
+  const visible=visibleIndexes();
+  if(!visible.length){$("card").hidden=true;$("counter").textContent="0/0";$("progress").max=1;$("progress").value=0;$("notice").textContent="Esta fila não contém trajetórias.";return}
+  $("card").hidden=false;if(!visible.includes(index))index=visible[0];
   const item=DATA.items[index], review=reviews[item.trajectory_id];
-  $("counter").textContent=`${Object.keys(reviews).length}/${DATA.items.length} · item ${index+1}`;
-  $("progress").max=DATA.items.length; $("progress").value=Object.keys(reviews).length;
+  const reviewed=visible.filter(i=>reviews[DATA.items[i].trajectory_id]).length;
+  $("counter").textContent=`${reviewed}/${visible.length} · item ${visible.indexOf(index)+1}`;
+  $("progress").max=visible.length; $("progress").value=reviewed;
   $("exe").textContent=item.subject?.exe||"<indisponível>";
   $("process").textContent=`PID ${item.subject?.pid} · UID ${item.subject?.uid} · GID ${item.subject?.gid}`;
   $("window").textContent=`${item.event_count} eventos · seq ${item.source_sequence_first}–${item.source_sequence_last}`;
   $("split").textContent=item.split;
+  $("evaluation").textContent=item.evaluation_purpose==="security-efficacy"?"Protegido · eficácia de segurança":"Externo · monitoramento de falso positivo";
   $("operations").textContent=JSON.stringify(item.operation_counts,null,2);
   $("resources").textContent=(item.resource_samples||[]).join("\n")||"(sem amostras)";
   $("terminal").textContent=JSON.stringify(item.terminal,null,2);
@@ -84,12 +92,13 @@ async function classify(label){
     }catch(error){$("notice").textContent=`Não foi possível salvar: ${error.message}`;return}
   }
   reviews[id]=review; save();
-  const pending=DATA.items.findIndex((item,i)=>i>index&&!reviews[item.trajectory_id]);
-  if(pending>=0) index=pending; else if(index<DATA.items.length-1) index++; render();
+  const visible=visibleIndexes(), pending=visible.find(i=>i>index&&!reviews[DATA.items[i].trajectory_id]);
+  if(pending!==undefined) index=pending; else move(1); render();
 }
 $("benign").onclick=()=>classify("benign"); $("malicious").onclick=()=>classify("malicious");
 $("clear").onclick=()=>{delete reviews[DATA.items[index].trajectory_id];save();render()};
-$("prev").onclick=()=>{index=Math.max(0,index-1);render()}; $("next").onclick=()=>{index=Math.min(DATA.items.length-1,index+1);render()};
+$("prev").onclick=()=>move(-1); $("next").onclick=()=>move(1);
+$("purpose").onchange=()=>{const visible=visibleIndexes();if(visible.length)index=visible[0];render()};
 $("export").onclick=()=>{
   const missing=DATA.items.filter(item=>!reviews[item.trajectory_id]);
   if(missing.length){$("notice").textContent=`Ainda faltam ${missing.length} revisões.`;return}

@@ -135,6 +135,21 @@ AGB_BPFTRACE_COMMAND="sudo bpftrace" make capture-independent-events
 make build-independent-candidates
 ```
 
+Candidate generation classifies each exact executable into a separate
+evaluation queue. With a system-wide capture, list protected executables as a
+comma-separated set; every other executable becomes external telemetry:
+
+```bash
+AGB_COVERAGE_SCOPE=system-wide \
+AGB_PROTECTED_EXECUTABLES="/absolute/path/to/protected-agent,/absolute/path/to/workload" \
+make build-independent-candidates
+```
+
+Protected candidates use `security-efficacy`; external candidates use
+`false-positive-monitoring`. The review UI exposes both as separate queues, and
+only the former can contribute to Gate 2 promotion. Existing valid reviews are
+preserved when `make build-review-queue` regenerates a queue.
+
 Candidate construction divides long process histories into contiguous windows
 of at most 256 events (`AGB_MAX_TRAJECTORY_EVENTS`). Derived sequences restart
 at one, while `provenance.source_sequence` preserves the canonical source

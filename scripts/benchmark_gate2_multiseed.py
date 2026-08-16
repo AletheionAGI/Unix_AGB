@@ -49,10 +49,26 @@ def main() -> None:
     if len(args.checkpoint) != 3 or len({seed for seed, _, _ in args.checkpoint}) != 3:
         parser.error("exactly three distinct checkpoint seeds are required")
     independent_manifest = None
+    external_trajectories: list[dict[str, Any]] = []
     if args.independent_dataset:
         manifest_bytes = args.independent_dataset.read_bytes()
         independent_manifest = freeze_manifest(args.independent_dataset)
-        trajectories = load_independent_corpus(args.independent_dataset, split="test")
+        try:
+            trajectories = load_independent_corpus(
+                args.independent_dataset,
+                split="test",
+                evaluation_purpose="security-efficacy",
+            )
+        except ValueError:
+            trajectories = []
+        try:
+            external_trajectories = load_independent_corpus(
+                args.independent_dataset,
+                split="test",
+                evaluation_purpose="false-positive-monitoring",
+            )
+        except ValueError:
+            external_trajectories = []
         limitations = (
             "Externally collected labels remain subject to collector and reviewer bias; "
             "Unix-AGB did not alter the frozen test split."
@@ -62,22 +78,36 @@ def main() -> None:
         manifest = json.loads(manifest_bytes)
         trajectories = adversarial_corpus(manifest)
         limitations = manifest["limitations"]
-    baselines = [
-        evaluate(EventLocalEngine, trajectories),
-        evaluate(SequenceRuleEngine, trajectories),
-        evaluate(SlidingWindowEngine, trajectories),
-    ]
-    sequence = next(item for item in baselines if item["engine"].startswith("B:"))
+    baselines = (
+        [
+            evaluate(EventLocalEngine, trajectories),
+            evaluate(SequenceRuleEngine, trajectories),
+            evaluate(SlidingWindowEngine, trajectories),
+        ]
+        if trajectories
+        else []
+    )
+    external_baselines = (
+        [
+            evaluate(EventLocalEngine, external_trajectories),
+            evaluate(SequenceRuleEngine, external_trajectories),
+            evaluate(SlidingWindowEngine, external_trajectories),
+        ]
+        if external_trajectories
+        else []
+    )
+    sequence = next((item for item in baselines if item["engine"].startswith("B:")), None)
     seeds: list[dict[str, Any]] = []
     for seed, checkpoint, digest in sorted(args.checkpoint):
-        result = evaluate(
-            lambda checkpoint=checkpoint, digest=digest: AsmCmEngine(
+        engine_factory = lambda checkpoint=checkpoint, digest=digest: AsmCmEngine(
                 checkpoint,
                 args.asm_source_root,
                 device=args.device,
                 expected_sha256=digest,
-            ),
-            trajectories,
+            )
+        result = evaluate(engine_factory, trajectories) if trajectories else None
+        external_result = (
+            evaluate(engine_factory, external_trajectories) if external_trajectories else None
         )
         seeds.append(
             {
@@ -85,12 +115,21 @@ def main() -> None:
                 "checkpoint": str(checkpoint.resolve()),
                 "checkpoint_sha256": digest,
                 "result": result,
+                "external_false_positive_monitoring": external_result,
             }
         )
-    accuracies = [accuracy(item["result"]) for item in seeds]
-    sequence_accuracy = accuracy(sequence)
-    strict_advantages = sum(value > sequence_accuracy for value in accuracies)
-    all_noninferior = all(value >= sequence_accuracy for value in accuracies)
+    accuracies = [accuracy(item["result"]) for item in seeds if item["result"]]
+    sequence_accuracy = accuracy(sequence) if sequence else None
+    strict_advantages = (
+        sum(value > sequence_accuracy for value in accuracies)
+        if sequence_accuracy is not None
+        else 0
+    )
+    all_noninferior = bool(
+        accuracies
+        and sequence_accuracy is not None
+        and all(value >= sequence_accuracy for value in accuracies)
+    )
     report = {
         "benchmark": "unix-agb-gate2-adversarial-v2-multiseed",
         "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
@@ -100,10 +139,15 @@ def main() -> None:
         "trajectory_count": len(trajectories),
         "event_count": sum(len(item["events"]) for item in trajectories),
         "baselines": baselines,
+        "external_false_positive_monitoring": {
+            "trajectory_count": len(external_trajectories),
+            "event_count": sum(len(item["events"]) for item in external_trajectories),
+            "baselines": external_baselines,
+        },
         "asm_cm_seeds": seeds,
         "aggregate": {
-            "accuracy_mean": statistics.mean(accuracies),
-            "accuracy_population_stddev": statistics.pstdev(accuracies),
+            "accuracy_mean": statistics.mean(accuracies) if accuracies else None,
+            "accuracy_population_stddev": statistics.pstdev(accuracies) if accuracies else None,
             "sequence_accuracy": sequence_accuracy,
             "all_seeds_noninferior_to_sequence": all_noninferior,
             "strict_advantage_seed_count": strict_advantages,

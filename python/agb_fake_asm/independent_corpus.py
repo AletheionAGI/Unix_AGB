@@ -9,6 +9,9 @@ from typing import Any
 
 ALLOWED_SPLITS = {"calibration", "test"}
 ALLOWED_LABELS = {"benign", "malicious"}
+ALLOWED_COVERAGE_SCOPES = {"system-wide", "protected-only", "allowlist"}
+ALLOWED_SUBJECT_SCOPES = {"protected", "external"}
+ALLOWED_EVALUATION_PURPOSES = {"security-efficacy", "false-positive-monitoring"}
 REAL_PROVENANCE = {"ptrace", "bpf", "audit", "agent-broker"}
 
 
@@ -16,7 +19,12 @@ class IndependentCorpusError(ValueError):
     pass
 
 
-def load_independent_corpus(path: Path, *, split: str | None = None) -> list[dict[str, Any]]:
+def load_independent_corpus(
+    path: Path,
+    *,
+    split: str | None = None,
+    evaluation_purpose: str | None = None,
+) -> list[dict[str, Any]]:
     if not path.is_file():
         raise IndependentCorpusError(f"input does not exist: {path}")
     trajectories: list[dict[str, Any]] = []
@@ -36,6 +44,10 @@ def load_independent_corpus(path: Path, *, split: str | None = None) -> list[dic
             "family",
             "split",
             "collector_revision",
+            "coverage_scope",
+            "coverage_config_sha256",
+            "subject_scope",
+            "evaluation_purpose",
             "events",
         }
         if set(item) != required:
@@ -44,6 +56,23 @@ def load_independent_corpus(path: Path, *, split: str | None = None) -> list[dic
             )
         if item["label"] not in ALLOWED_LABELS or item["split"] not in ALLOWED_SPLITS:
             raise IndependentCorpusError(f"line {line_number}: invalid label or split")
+        if item["coverage_scope"] not in ALLOWED_COVERAGE_SCOPES:
+            raise IndependentCorpusError(f"line {line_number}: invalid coverage scope")
+        if not isinstance(item["coverage_config_sha256"], str) or len(
+            item["coverage_config_sha256"]
+        ) != 64:
+            raise IndependentCorpusError(f"line {line_number}: invalid coverage digest")
+        if item["subject_scope"] not in ALLOWED_SUBJECT_SCOPES:
+            raise IndependentCorpusError(f"line {line_number}: invalid subject scope")
+        if item["evaluation_purpose"] not in ALLOWED_EVALUATION_PURPOSES:
+            raise IndependentCorpusError(f"line {line_number}: invalid evaluation purpose")
+        expected_purpose = (
+            "security-efficacy"
+            if item["subject_scope"] == "protected"
+            else "false-positive-monitoring"
+        )
+        if item["evaluation_purpose"] != expected_purpose:
+            raise IndependentCorpusError(f"line {line_number}: subject scope and purpose disagree")
         if not item["label_source"].strip() or not item["collector_revision"].strip():
             raise IndependentCorpusError(f"line {line_number}: label source and revision required")
         events = item["events"]
@@ -72,12 +101,19 @@ def load_independent_corpus(path: Path, *, split: str | None = None) -> list[dic
             raise IndependentCorpusError(
                 f"namespace leakage: {namespace_id} occurs in calibration and test"
             )
-        if split is None or item["split"] == split:
+        if (split is None or item["split"] == split) and (
+            evaluation_purpose is None or item["evaluation_purpose"] == evaluation_purpose
+        ):
             trajectories.append(
                 {
                     "case_id": item["trajectory_id"],
                     "family": item["family"],
                     "malicious": item["label"] == "malicious",
+                    "split": item["split"],
+                    "coverage_scope": item["coverage_scope"],
+                    "coverage_config_sha256": item["coverage_config_sha256"],
+                    "subject_scope": item["subject_scope"],
+                    "evaluation_purpose": item["evaluation_purpose"],
                     "events": events,
                 }
             )
@@ -88,8 +124,8 @@ def load_independent_corpus(path: Path, *, split: str | None = None) -> list[dic
 
 def freeze_manifest(path: Path) -> dict[str, Any]:
     all_items = load_independent_corpus(path)
-    calibration = load_independent_corpus(path, split="calibration")
-    test = load_independent_corpus(path, split="test")
+    calibration = [item for item in all_items if item["split"] == "calibration"]
+    test = [item for item in all_items if item["split"] == "test"]
 
     def counts(items: list[dict[str, Any]]) -> dict[str, int]:
         return {
@@ -99,18 +135,31 @@ def freeze_manifest(path: Path) -> dict[str, Any]:
             "malicious": sum(item["malicious"] for item in items),
         }
 
+    security = [item for item in all_items if item["evaluation_purpose"] == "security-efficacy"]
+    external = [
+        item for item in all_items if item["evaluation_purpose"] == "false-positive-monitoring"
+    ]
+    security_test = [item for item in security if item["split"] == "test"]
     return {
-        "protocol": "unix-agb-independent-telemetry-v1",
+        "protocol": "unix-agb-independent-telemetry-v2",
         "dataset_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "all": counts(all_items),
         "calibration": counts(calibration),
         "test": counts(test),
+        "evaluation": {
+            "security_efficacy": counts(security),
+            "false_positive_monitoring": counts(external),
+        },
+        "coverage_scopes": sorted({item["coverage_scope"] for item in all_items}),
+        "coverage_config_sha256": sorted(
+            {item["coverage_config_sha256"] for item in all_items}
+        ),
         "families": sorted({item["family"] for item in all_items}),
         "promotion_eligible": all(
             (
-                counts(test)["benign"] >= 20,
-                counts(test)["malicious"] >= 20,
-                len({item["family"] for item in test}) >= 3,
+                counts(security_test)["benign"] >= 20,
+                counts(security_test)["malicious"] >= 20,
+                len({item["family"] for item in security_test}) >= 3,
             )
         ),
     }

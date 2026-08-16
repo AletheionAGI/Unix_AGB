@@ -16,6 +16,16 @@ def main() -> None:
     parser.add_argument("--calibration-percent", type=int, default=20)
     parser.add_argument("--min-events", type=int, default=1)
     parser.add_argument("--max-events", type=int, default=256)
+    parser.add_argument(
+        "--coverage-scope",
+        choices=("system-wide", "protected-only", "allowlist"),
+        default="system-wide",
+    )
+    parser.add_argument(
+        "--protected-executables",
+        default="",
+        help="comma-separated exact executable paths treated as protected",
+    )
     args = parser.parse_args()
     candidates = build_candidates(
         read_jsonl(args.input),
@@ -23,6 +33,8 @@ def main() -> None:
         calibration_percent=args.calibration_percent,
         min_events=args.min_events,
         max_events=args.max_events,
+        coverage_scope=args.coverage_scope,
+        protected_executables={item for item in args.protected_executables.split(",") if item},
     )
     write_jsonl(args.output, candidates)
     print(json.dumps({"candidates": len(candidates), "output": str(args.output)}))
