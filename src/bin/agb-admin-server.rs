@@ -10,12 +10,14 @@ use std::time::{Duration, Instant};
 struct Request {
     token: String,
     operation: String,
+    operator: String,
 }
 
 #[derive(Serialize)]
 struct Response {
     ok: bool,
     reason: String,
+    operator: String,
 }
 
 fn handle(
@@ -37,10 +39,16 @@ fn handle(
     {
         requests.pop_front();
     }
+    let operator = request
+        .as_ref()
+        .ok()
+        .map(|r| r.operator.clone())
+        .unwrap_or_else(|| "unknown".into());
     let response = if requests.len() >= 5 {
         Response {
             ok: false,
             reason: "rate-limit".into(),
+            operator,
         }
     } else {
         requests.push_back(now);
@@ -63,11 +71,13 @@ fn handle(
                 Response {
                     ok: result,
                     reason: reason.into(),
+                    operator: request.operator,
                 }
             }
             _ => Response {
                 ok: false,
                 reason: "invalid-token-or-request".into(),
+                operator,
             },
         }
     };
