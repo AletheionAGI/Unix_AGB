@@ -39,6 +39,10 @@ def main() -> None:
             import shutil as _shutil
             _shutil.copy2(binary, lab_binary)
             lab_binary.chmod(0o755)
+            lab_client = base / "admin_request.py"
+            _shutil.copy2(root / "scripts/admin_request.py", lab_client)
+            lab_client.chmod(0o755)
+            os.chown(lab_client, account.pw_uid, account.pw_gid)
             env = {**os.environ, "AGB_ADMIN_TOKEN": "lab-token", "AGB_ADMIN_UIDS": str(account.pw_uid), "AGB_ADMIN_GIDS": str(account.pw_gid)}
             command = ["runuser", "-u", name, "--", str(lab_binary), str(base / "admin.sock"), str(base / "cache"), str(base / "audit")]
             process = subprocess.Popen(command, env=env)
@@ -50,7 +54,7 @@ def main() -> None:
                     if process.poll() is not None:
                         raise SystemExit("dedicated admin server exited before socket creation")
                     time.sleep(0.02)
-                response = json.loads(subprocess.check_output(["runuser", "-u", name, "--", "python3", str(root / "scripts/admin_request.py"), str(sock), "lab-token"], text=True))
+                response = json.loads(subprocess.check_output(["runuser", "-u", name, "--", "python3", str(lab_client), str(sock), "lab-token"], text=True))
                 if response.get("reason") != "admin-ok":
                     raise SystemExit(f"dedicated admin request rejected: {response}")
                 audit = base / "audit"
