@@ -151,7 +151,9 @@ replacing an earlier capture if permission is denied or no events are seen. Revi
 By default the observer captures the complete host. Set `AGB_CAPTURE_UID` to a
 numeric UID only when an authorized collection must be deliberately restricted.
 The runner translates the system-wide `-1` sentinel to a non-option positional
-value before invoking bpftrace.
+value before invoking bpftrace. The collector excludes its own PID to prevent
+observer feedback, and any kernel-reported lost event count invalidates the
+capture instead of publishing incomplete causal evidence.
 `var/telemetry/trajectory-candidates.jsonl` independently, then write one JSONL
 decision per candidate to `var/telemetry/trajectory-reviews.jsonl`:
 

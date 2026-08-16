@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import selectors
+import re
 import shlex
 import signal
 import socket
@@ -36,6 +37,7 @@ def main() -> None:
         "line",
         str(root / "scripts/observe_live_bpf.bt"),
         str(bpftrace_uid),
+        str(os.getpid()),
     ]
     if not command:
         parser.error("--bpftrace-command cannot be empty")
@@ -43,7 +45,7 @@ def main() -> None:
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
-            stderr=sys.stderr,
+            stderr=subprocess.PIPE,
             text=True,
             process_group=0,
         )
@@ -60,18 +62,32 @@ def main() -> None:
     count = 0
     sequences: dict[str, int] = {}
     assert process.stdout
+    assert process.stderr
     selector = selectors.DefaultSelector()
-    selector.register(process.stdout, selectors.EVENT_READ)
+    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
     deadline = time.monotonic() + args.duration
+    lost_events = 0
     interrupted = False
     try:
         while process.poll() is None and time.monotonic() < deadline:
             ready = selector.select(timeout=min(0.25, max(0, deadline - time.monotonic())))
             if not ready:
                 continue
-            line = process.stdout.readline()
+            key = ready[0][0]
+            stream = key.fileobj
+            line = stream.readline()
             if not line:
-                break
+                selector.unregister(stream)
+                if not selector.get_map():
+                    break
+                continue
+            loss_match = re.search(r"(?:Lost|lost event count:)\s*(\d+)", line)
+            if loss_match:
+                lost_events = max(lost_events, int(loss_match.group(1)))
+            if key.data == "stderr":
+                print(line, end="", file=sys.stderr)
+                continue
             try:
                 event = normalize(line, sequences)
             except (KeyError, OSError, ValueError) as error:
@@ -114,17 +130,40 @@ def main() -> None:
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
     return_code = process.wait()
-    status = "stopped" if (return_code == 0 or timed_out or interrupted) and count else "failed"
+    remaining_errors = process.stderr.read()
+    if remaining_errors:
+        print(remaining_errors, end="", file=sys.stderr)
+        for match in re.finditer(r"(?:Lost|lost event count:)\s*(\d+)", remaining_errors):
+            lost_events = max(lost_events, int(match.group(1)))
+    status = (
+        "stopped"
+        if (return_code == 0 or timed_out or interrupted) and count and lost_events == 0
+        else "failed"
+    )
     if partial_path:
         if status == "stopped":
             partial_path.replace(args.output_events)
         else:
             partial_path.unlink(missing_ok=True)
-    print(json.dumps({"observer": "bpftrace", "events": count, "status": status}))
+    print(
+        json.dumps(
+            {
+                "observer": "bpftrace",
+                "events": count,
+                "lost_events": lost_events,
+                "status": status,
+            }
+        )
+    )
     if status == "failed":
         if not count:
             print(
                 "live_bpf_observer: no events captured; verify tracingfs/BPF privileges",
+                file=sys.stderr,
+            )
+        if lost_events:
+            print(
+                "live_bpf_observer: capture rejected because kernel events were lost",
                 file=sys.stderr,
             )
         raise SystemExit(return_code or 2)
