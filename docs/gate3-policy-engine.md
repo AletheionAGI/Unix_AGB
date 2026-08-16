@@ -79,6 +79,13 @@ records terminal confusion, audit completeness, cache contents, checkpoint and
 corpus fingerprints. `ALLOW` remains an audit result only. The runner rejects a
 cache containing anything other than `DENY`.
 
+Audit persistence uses two durability classes. `DENY` forces `flush` and
+`sync_data` before cache compilation. Audit-only `ALLOW` and `ABSTAIN` records
+share a configurable group sync (64 records by default) and all remaining
+records are synchronized on clean shutdown. Set `AGB_GATE3_AUDIT_GROUP_SIZE`
+to change the batch size. The authenticated cache snapshot is rewritten only
+after a successfully compiled `DENY`, never for a shadow `ALLOW`.
+
 ## Non-claims
 
 This implementation validates policy semantics, real ASM-CM state handoff, cache compilation, restart,

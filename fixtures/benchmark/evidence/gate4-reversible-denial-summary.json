@@ -1,0 +1,16 @@
+{
+  "cache_expired_before_rollback": true,
+  "compiled_cache_effect": "DENY",
+  "denied_errno": 13,
+  "deny_audit_preceded_cache": true,
+  "gate3_enforcement_applied": false,
+  "gate4_enforcement_applied": true,
+  "policy_revision": "policy:gate4-lab-v1",
+  "post_rollback_access": "allowed",
+  "proof": "unix-agb-gate4-reversible-denial-v1",
+  "report_sha256": "8406fd427da4bb98bd4bd1ba63c5d5591d9206959769efbfc78e857bfb331366",
+  "rollback": "terminate restricted process and start a clean process",
+  "scope": "one process-local laboratory workload and one temporary marker file",
+  "system_wide_changes": false,
+  "ttl_seconds": 2
+}

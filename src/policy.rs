@@ -251,6 +251,68 @@ impl CompiledDecisionCache {
 
 pub struct Gate3Policy;
 
+pub struct Gate3AuditLog {
+    file: File,
+    pending_unsynced: usize,
+    group_size: usize,
+    sync_count: u64,
+}
+
+impl Gate3AuditLog {
+    pub fn open(path: impl AsRef<Path>, group_size: usize) -> Result<Self, String> {
+        if group_size == 0 || group_size > 65_536 {
+            return Err("Gate 3 audit group size must be between 1 and 65536".into());
+        }
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(|error| error.to_string())?;
+        Ok(Self {
+            file,
+            pending_unsynced: 0,
+            group_size,
+            sync_count: 0,
+        })
+    }
+
+    pub fn append(&mut self, decision: &PolicyDecision) -> Result<bool, String> {
+        serde_json::to_writer(&mut self.file, decision).map_err(|error| error.to_string())?;
+        self.file
+            .write_all(b"\n")
+            .map_err(|error| error.to_string())?;
+        self.pending_unsynced += 1;
+        let must_sync = decision.effect == "DENY" || self.pending_unsynced >= self.group_size;
+        if must_sync {
+            self.sync()?;
+        }
+        Ok(must_sync)
+    }
+
+    pub fn sync(&mut self) -> Result<(), String> {
+        if self.pending_unsynced == 0 {
+            return Ok(());
+        }
+        self.file.flush().map_err(|error| error.to_string())?;
+        self.file.sync_data().map_err(|error| error.to_string())?;
+        self.pending_unsynced = 0;
+        self.sync_count += 1;
+        Ok(())
+    }
+
+    pub fn pending_unsynced(&self) -> usize {
+        self.pending_unsynced
+    }
+
+    pub fn sync_count(&self) -> u64 {
+        self.sync_count
+    }
+}
+
 impl Gate3Policy {
     pub fn evaluate(
         event: &SecurityEvent,
@@ -364,6 +426,47 @@ impl Gate3Policy {
             return PolicyDecision {
                 effect: "ABSTAIN".into(),
                 reason_codes: vec!["AUDIT_PERSISTENCE_UNAVAILABLE".into()],
+                fail_closed: true,
+                ..decision
+            };
+        }
+        if let Some(compiled) = Self::compile(event, &decision, profile, now_epoch) {
+            if cache.put(compiled, &profile.policy_revision).is_err() {
+                return PolicyDecision {
+                    effect: "ABSTAIN".into(),
+                    reason_codes: vec!["CACHE_COMPILATION_FAILED".into()],
+                    fail_closed: true,
+                    ..decision
+                };
+            }
+        }
+        decision
+    }
+
+    pub fn evaluate_grouped_audit_and_compile(
+        event: &SecurityEvent,
+        state: &SecurityStateSummary,
+        profile: &Gate3Profile,
+        now_epoch: u64,
+        audit: &mut Gate3AuditLog,
+        cache: &mut CompiledDecisionCache,
+    ) -> PolicyDecision {
+        let decision = Self::evaluate(event, state, profile, now_epoch);
+        let durable = match audit.append(&decision) {
+            Ok(durable) => durable,
+            Err(_) => {
+                return PolicyDecision {
+                    effect: "ABSTAIN".into(),
+                    reason_codes: vec!["AUDIT_PERSISTENCE_UNAVAILABLE".into()],
+                    fail_closed: true,
+                    ..decision
+                };
+            }
+        };
+        if decision.effect == "DENY" && !durable {
+            return PolicyDecision {
+                effect: "ABSTAIN".into(),
+                reason_codes: vec!["DENY_AUDIT_NOT_DURABLE".into()],
                 fail_closed: true,
                 ..decision
             };
@@ -584,6 +687,44 @@ mod tests {
         assert_eq!(decision.effect, "ABSTAIN");
         assert_eq!(decision.reason_codes, ["AUDIT_PERSISTENCE_UNAVAILABLE"]);
         assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn grouped_allow_audit_syncs_in_batches_but_deny_syncs_immediately() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("grouped-audit.jsonl");
+        let mut audit = Gate3AuditLog::open(&path, 3).unwrap();
+        let mut cache = CompiledDecisionCache::default();
+        for sequence in 1..=2 {
+            let event = sample_event(&format!("evt:allow-{sequence}"), sequence, 81, 100);
+            let decision = Gate3Policy::evaluate_grouped_audit_and_compile(
+                &event,
+                &state(&event, "normal"),
+                &profile(),
+                1000,
+                &mut audit,
+                &mut cache,
+            );
+            assert_eq!(decision.effect, "ALLOW");
+        }
+        assert_eq!(audit.pending_unsynced(), 2);
+        assert_eq!(audit.sync_count(), 0);
+        assert!(cache.is_empty());
+
+        let deny = sample_event("evt:deny-immediate", 3, 81, 100);
+        let decision = Gate3Policy::evaluate_grouped_audit_and_compile(
+            &deny,
+            &state(&deny, "elevated"),
+            &profile(),
+            1000,
+            &mut audit,
+            &mut cache,
+        );
+        assert_eq!(decision.effect, "DENY");
+        assert_eq!(audit.pending_unsynced(), 0);
+        assert_eq!(audit.sync_count(), 1);
+        assert_eq!(cache.len(), 1);
+        assert_eq!(std::fs::read_to_string(path).unwrap().lines().count(), 3);
     }
 
     #[test]

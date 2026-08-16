@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -111,6 +111,7 @@ gate3-dry-run:
 	AGB_GATE3_CACHE_KEY="$${AGB_GATE3_CACHE_KEY:?set AGB_GATE3_CACHE_KEY}" \
 	AGB_GATE3_MIN_CONFIDENCE="$${AGB_GATE3_MIN_CONFIDENCE:-0.8}" \
 	AGB_GATE3_TTL_SECONDS="$${AGB_GATE3_TTL_SECONDS:-2}" \
+	AGB_GATE3_AUDIT_GROUP_SIZE="$${AGB_GATE3_AUDIT_GROUP_SIZE:-64}" \
 	target/debug/agb-policy-dry-run \
 		"$${AGB_GATE3_AUDIT:-var/gate3-decisions.jsonl}" \
 		"$${AGB_GATE3_CACHE:-var/gate3-cache.json}" \
@@ -135,6 +136,12 @@ benchmark-gate3-asm-pipeline:
 		--audit "$${AGB_GATE3_AUDIT:-var/gate3-asm-decisions.jsonl}" \
 		--cache "$${AGB_GATE3_CACHE:-var/gate3-asm-cache.json}" \
 		--output "$${AGB_GATE3_BENCHMARK_OUTPUT:-var/benchmark/gate3-asm-pipeline.json}"
+
+gate4-reversible-denial:
+	cargo build --quiet --bin agb-lab-workload --bin agb-policy-dry-run
+	python3 scripts/run_gate4_reversible_denial.py \
+		--ttl-seconds "$${AGB_GATE4_TTL_SECONDS:-2}" \
+		--output "$${AGB_GATE4_OUTPUT:-var/benchmark/gate4-reversible-denial.json}"
 
 causal-proof:
 	cargo run --quiet --bin agb-causal-proof

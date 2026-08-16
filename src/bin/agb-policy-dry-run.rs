@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use unix_agb::policy::{CompiledDecisionCache, Gate3Policy, Gate3Profile, gate3_cache_key};
+use unix_agb::policy::{
+    CompiledDecisionCache, Gate3AuditLog, Gate3Policy, Gate3Profile, gate3_cache_key,
+};
 use unix_agb::{PolicyDecision, SecurityEvent, SecurityStateSummary};
 
 #[derive(Deserialize)]
@@ -50,6 +52,10 @@ fn main() -> Result<(), String> {
     };
     profile.validate()?;
     let secret = required_env("AGB_GATE3_CACHE_KEY")?;
+    let audit_group_size = std::env::var("AGB_GATE3_AUDIT_GROUP_SIZE")
+        .unwrap_or_else(|_| "64".into())
+        .parse::<usize>()
+        .map_err(|_| "AGB_GATE3_AUDIT_GROUP_SIZE must be an integer".to_string())?;
     let now_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
@@ -64,6 +70,7 @@ fn main() -> Result<(), String> {
     } else {
         CompiledDecisionCache::default()
     };
+    let mut audit = Gate3AuditLog::open(&audit_path, audit_group_size)?;
 
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
@@ -79,15 +86,17 @@ fn main() -> Result<(), String> {
             .map_err(|error| error.to_string())?
             .as_secs();
         let cache_key = gate3_cache_key(&request.event);
-        let decision = Gate3Policy::evaluate_audit_and_compile(
+        let decision = Gate3Policy::evaluate_grouped_audit_and_compile(
             &request.event,
             &request.state,
             &profile,
             now_epoch,
-            &audit_path,
+            &mut audit,
             &mut cache,
         );
-        cache.save_authenticated(&cache_path, &profile.policy_revision, secret.as_bytes())?;
+        if decision.effect == "DENY" {
+            cache.save_authenticated(&cache_path, &profile.policy_revision, secret.as_bytes())?;
+        }
         serde_json::to_writer(
             &mut stdout,
             &Response {
@@ -100,5 +109,6 @@ fn main() -> Result<(), String> {
         stdout.write_all(b"\n").map_err(|error| error.to_string())?;
         stdout.flush().map_err(|error| error.to_string())?;
     }
+    audit.sync()?;
     Ok(())
 }

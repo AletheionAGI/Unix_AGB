@@ -15,7 +15,7 @@ production observer or system-wide enforcement service exists yet.
 | 1 | Ubuntu observer and canonical event pipeline | Prototype |
 | 2 | ASM-CM state runtime and persistence | Promoted controlled-lab prototype |
 | 3 | Explicit policy engine and dry-run decisions | Real ASM-CM deny-only dry-run pipeline |
-| 4 | Narrow deterministic enforcement pilot | Laboratory prototype |
+| 4 | Narrow deterministic enforcement pilot | Controlled process-local denial prototype |
 | 5 | AI-agent capability broker | Not started |
 | 6 | Ubuntu-derived developer preview | Not started |
 | 7 | Formal decision on custom-kernel necessity | Not started |
@@ -172,6 +172,13 @@ See report 81.
 - prohibit state-derived privilege expansion.
 
 ## Gate 4 — enforcement pilot
+
+The first controlled pilot applies one two-second, exact-process denial to a
+temporary marker through the existing Landlock laboratory workload. The deny
+audit is durable before cache compilation, access fails with `EACCES`, cache
+expiry is observed, and teardown plus clean restart restores access. No system
+path or unrelated process is modified. Because Landlock cannot relax policy in
+a running process, rollback is explicitly process replacement. See report 82.
 
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;

@@ -152,9 +152,9 @@ fn valid_prefixed_id_with_segments(value: &str, prefix: &str, max_len: usize) ->
             !suffix.is_empty()
                 && !suffix.starts_with(':')
                 && !suffix.ends_with(':')
-                && suffix.bytes().all(|byte| {
-                    byte.is_ascii_alphanumeric() || b"._-:".contains(&byte)
-                })
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-:".contains(&byte))
         })
 }
 

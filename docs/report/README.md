@@ -26,6 +26,8 @@ remains authoritative in `ROADMAP.md`.
   restart/corruption tests, and isolated release lookup measurements.
 - report 81: real BPF telemetry through ASM-CM state, Gate 3 durable audit, and
   authenticated deny-only cache with enforcement explicitly disabled.
+- report 82: grouped audit-only persistence, mandatory pre-cache deny `fsync`,
+  and one temporary process-local denial with teardown/restart rollback.
 
 ## Administrative boundary
 
@@ -46,7 +48,8 @@ remains authoritative in `ROADMAP.md`.
 - Gate 2 is promoted as a controlled-laboratory research prototype. This does
   not establish unknown-attack generalization, production latency, or a safe
   enforcement policy. Gate 3 now has a real-ASM-CM deny-only dry-run pipeline;
-  it is not connected to a Gate 4 enforcement backend.
+  Gate 4 now has one controlled process-local denial proof, not a production
+  enforcement backend.
 
 New work should update this index when it changes the current interpretation;
 small chronological reports may still be retained for reproducibility.
