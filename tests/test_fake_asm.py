@@ -12,12 +12,21 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from agb_fake_asm import FakeAsmEngine
+from agb_fake_asm import DecisionCache, FakeAsmEngine
 from agb_fake_asm.server import FakeAsmServer
 from generate_synthetic_events import event
 
 
 class FakeAsmEngineTests(unittest.TestCase):
+    def test_decision_cache_is_versioned_and_expires(self) -> None:
+        cache = DecisionCache(ttl_seconds=0.01)
+        key = ("namespace", "/run/secrets/api-token", "trajectory.elevated")
+        cache.put(key, "DENY", "policy:v1")
+        self.assertEqual(cache.get(key, "policy:v1"), "DENY")
+        self.assertIsNone(cache.get(key, "policy:v2"))
+        import time
+        time.sleep(0.02)
+        self.assertIsNone(cache.get(key, "policy:v1"))
     def test_elevated_chain_is_deterministic(self) -> None:
         engine = FakeAsmEngine()
         engine.update(event(1, "process.exec", []))

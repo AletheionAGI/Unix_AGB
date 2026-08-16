@@ -20,10 +20,10 @@ Optional LLM reader        human-readable explanation outside the hot path
 ## Status
 
 This repository contains the Gate 0 architecture, versioned contracts, and an
-audit-only functional skeleton. The skeleton accepts synthetic events, appends
-them to a canonical JSONL store, updates isolated deterministic state, emits a
-policy decision, and records a fake enforcement result. It does not observe a
-real host or block any operation.
+audit-only functional skeleton plus two controlled Linux laboratory proofs.
+The proofs observe real subprocesses and demonstrate a gateway decision causing
+an external seccomp broker to return `EACCES`; neither is a production daemon
+or a system-wide policy service.
 
 Unix-AGB remains experimental research and is not a production security
 system. Security efficacy, production performance, state compactness, and
@@ -128,6 +128,12 @@ to `agb-gateway`, which persists three events and returns the causal policy
 decision before the kernel response. Reports and gateway JSONL stores are
 written to `var/seccomp-proof/`. It is limited to one disposable file and does
 not install a system-wide policy.
+
+The enforcement edge also includes a versioned, expiring decision-cache
+primitive in `python/agb_fake_asm/policy_cache.py`. Cache misses never invent
+an allow decision; policy revision changes and TTL expiry invalidate entries.
+`make seccomp-proof` now performs two identical protected opens and reports the
+second request as a cache hit.
 
 `make linux-capabilities` reports whether the host exposes the prerequisites for
 the next observer step. The BPF laboratory observer is defined in

@@ -5,8 +5,9 @@ Original date: 2026-08-15
 ## Current status
 
 Unix-AGB has completed the reviewable **Gate 0 — architecture and repository
-foundation** artifact. Gate 1 remains pending: current executable code accepts
-synthetic input only and performs no real observation or enforcement.
+foundation** artifact. Gate 1 is a laboratory prototype: real subprocesses can
+be traced and normalized, and Gate 4 has a narrowly scoped seccomp proof. No
+production observer or system-wide enforcement service exists yet.
 
 | Gate | Scope | Status |
 |---:|---|---|
@@ -14,7 +15,7 @@ synthetic input only and performs no real observation or enforcement.
 | 1 | Ubuntu observer and canonical event pipeline | Prototype |
 | 2 | ASM-CM state runtime and persistence | Not started |
 | 3 | Explicit policy engine and dry-run decisions | Not started |
-| 4 | Narrow deterministic enforcement pilot | Not started |
+| 4 | Narrow deterministic enforcement pilot | Laboratory prototype |
 | 5 | AI-agent capability broker | Not started |
 | 6 | Ubuntu-derived developer preview | Not started |
 | 7 | Formal decision on custom-kernel necessity | Not started |
@@ -47,8 +48,13 @@ does not validate the security system or promote the project to Gate 1.
 
 The repository includes a cooperative laboratory slice with real Rust
 subprocesses, `strace` normalization, the Rust gateway, and process-local
-Landlock denial. A production observer and system-wide enforcement adapter
-remain outstanding.
+Landlock denial. It also includes an external seccomp-user-notify laboratory
+broker connected to the gateway. A production observer, durable broker, and
+system-wide enforcement adapter remain outstanding.
+
+The enforcement edge now has a tested versioned/expiring cache primitive with
+fail-closed misses. It is not yet wired into a persistent broker or promoted to
+the system-wide enforcement path.
 
 No automatic blocking occurs in this gate.
 

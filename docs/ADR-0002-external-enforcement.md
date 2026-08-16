@@ -37,8 +37,9 @@ the listener to a separate broker process, and the broker sends the observed
 trajectory to `agb-gateway`. The gateway appends the events, updates the
 namespace state, and returns the versioned decision. The broker then sends
 either a kernel `EACCES` response or a `CONTINUE` response. The proof is
-intentionally limited to `openat` and a disposable file; its gateway records
-are retained in `var/seccomp-proof/`.
+intentionally limited to `openat` and a disposable file; a second identical
+notification exercises the versioned TTL cache. Gateway records are retained
+in `var/seccomp-proof/`.
 
 ## Exit criteria
 

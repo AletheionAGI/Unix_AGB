@@ -30,8 +30,10 @@ outcomes for comparison and are never evidence that host enforcement occurred.
 
 ## EnforcementRecord
 
-Records what an adapter actually applied. Gate 0 uses backend `fake` and
-`applied: false`; a decision alone is never proof of enforcement.
+Records what an adapter actually applied. The default Gateway path uses backend
+`fake` and `applied: false`; the seccomp laboratory broker emits a separate
+external record with backend `seccomp-user-notify`. A decision alone is never
+proof of enforcement.
 
 ## Compatibility
 

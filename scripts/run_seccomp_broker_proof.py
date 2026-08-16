@@ -14,8 +14,13 @@ import struct
 import subprocess
 import tempfile
 import time
+import select
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
+from agb_fake_asm import DecisionCache
 
 LIB = ctypes.CDLL("libseccomp.so.2", use_errno=True)
 LIBC = ctypes.CDLL(None, use_errno=True)
@@ -25,6 +30,7 @@ SCMP_SYS_OPENAT = 257
 SECCOMP_IOCTL_NOTIF_RECV = 0xC0502100
 SECCOMP_IOCTL_NOTIF_SEND = 0xC0182101
 SECCOMP_USER_NOTIF_FLAG_CONTINUE = 1
+BROKER_TIMEOUT_S = 2.0
 
 LIB.seccomp_init.argtypes = [ctypes.c_uint32]
 LIB.seccomp_init.restype = ctypes.c_void_p
@@ -59,13 +65,15 @@ def child(sock: socket.socket, case: str, secret: str) -> None:
     try:
         listener = install_filter()
         sock.sendmsg([case.encode()], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [listener]))])
-        try:
-            fd = os.open(secret, os.O_RDONLY)
-            os.close(fd)
-            result = {"open_result": "allowed", "errno": None}
-        except OSError as error:
-            result = {"open_result": "denied", "errno": error.errno}
-        sock.send(json.dumps(result).encode())
+        results = []
+        for _ in range(2):
+            try:
+                fd = os.open(secret, os.O_RDONLY)
+                os.close(fd)
+                results.append({"open_result": "allowed", "errno": None})
+            except OSError as error:
+                results.append({"open_result": "denied", "errno": error.errno})
+        sock.send(json.dumps({"attempts": results}).encode())
     except BaseException as error:
         sock.send(json.dumps({"error": str(error)}).encode())
     finally:
@@ -76,6 +84,8 @@ def gateway_event(gateway: subprocess.Popen[str], event: dict[str, object]) -> d
     assert gateway.stdin is not None and gateway.stdout is not None
     gateway.stdin.write(json.dumps(event, separators=(",", ":")) + "\n")
     gateway.stdin.flush()
+    if not select.select([gateway.stdout], [], [], BROKER_TIMEOUT_S)[0]:
+        raise TimeoutError("agb-gateway response timeout")
     line = gateway.stdout.readline()
     if not line:
         raise RuntimeError(gateway.stderr.read() if gateway.stderr else "gateway stopped")
@@ -130,6 +140,7 @@ def broker(sock: socket.socket, pid: int, secret: str,
         raise RuntimeError("broker did not receive seccomp listener")
     listener = received[0]
     subject = subject_for(pid, "seccomp-lab-workload")
+    cache = DecisionCache(ttl_seconds=2.0)
     gateway_event(gateway, make_event(case, 1, subject, "process.exec",
                                        {"type": "process", "path": subject["exe"]},
                                        "allowed", []))
@@ -141,30 +152,63 @@ def broker(sock: socket.socket, pid: int, secret: str,
         gateway_event(gateway, make_event(case, 2, subject, "network.connect",
                                            {"type": "network", "host": "127.0.0.1", "port": 9},
                                            "allowed", ["external"]))
-    decision_response = gateway_event(
-        gateway,
-        make_event(case, 3, subject, "file.open",
-                   {"type": "file", "path": secret}, "requested", ["credential"]),
-    )
-    effect = decision_response["decision"]["effect"]
-    notification = bytearray(80)
-    fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_RECV, notification, True)
-    event_id = struct.unpack_from("<Q", notification)[0]
-    response = struct.pack(
-        "<Qqii", event_id, 0,
-        -errno.EACCES if effect == "DENY" else 0,
-        0 if effect == "DENY" else SECCOMP_USER_NOTIF_FLAG_CONTINUE,
-    )
-    fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_SEND, response)
+    namespace = f"process:{subject['boot_id']}:{subject['pid']}:{subject['start_time_ns']}"
+    cache_key = (namespace, secret, "trajectory")
+    decision_response = None
+    effect = None
+    event_id = None
+    cache_hits = 0
+    notification_ids = []
+    for attempt in range(2):
+        if not select.select([listener], [], [], BROKER_TIMEOUT_S)[0]:
+            raise TimeoutError("seccomp notification timeout")
+        notification = bytearray(80)
+        fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_RECV, notification, True)
+        event_id = struct.unpack_from("<Q", notification)[0]
+        if event_id == 0:
+            raise RuntimeError("invalid seccomp notification id")
+        notification_ids.append(event_id)
+        if attempt == 0:
+            decision_response = gateway_event(
+                gateway,
+                make_event(case, 3, subject, "file.open",
+                           {"type": "file", "path": secret}, "requested", ["credential"]),
+            )
+            effect = decision_response["decision"]["effect"]
+            cache.put(cache_key, effect, decision_response["decision"]["policy_revision"])
+        else:
+            cached = cache.get(cache_key, decision_response["decision"]["policy_revision"])
+            if cached is None:
+                raise RuntimeError("decision cache unexpectedly missed")
+            effect = cached
+            cache_hits += 1
+        if effect not in {"ALLOW", "DENY"}:
+            raise RuntimeError(f"unsupported gateway effect: {effect}")
+        response = struct.pack(
+            "<Qqii", event_id, 0,
+            -errno.EACCES if effect == "DENY" else 0,
+            0 if effect == "DENY" else SECCOMP_USER_NOTIF_FLAG_CONTINUE,
+        )
+        fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_SEND, response)
     child_result = json.loads(sock.recv(4096))
     return {
         "case": case,
         "broker": "seccomp-user-notify",
         "listener_received": True,
-        "notification_id": event_id,
+        "notification_id": notification_ids[0],
+        "notification_ids": notification_ids,
         "shadow_effect": effect,
         "decision": decision_response["decision"],
         "gateway_enforcement": decision_response["enforcement"],
+        "external_enforcement": {
+            "backend": "seccomp-user-notify",
+            "requested_effect": effect,
+            "applied": effect == "DENY",
+            "notification_id": notification_ids[0],
+            "timeout_ms": int(BROKER_TIMEOUT_S * 1000),
+            "cache_hit": cache_hits > 0,
+            "cache_hits": cache_hits,
+        },
         "enforcement_applied": effect == "DENY",
         **child_result,
     }
@@ -210,9 +254,9 @@ def main() -> None:
             "benign": run_case("benign", str(secret), output),
             "suspicious": run_case("suspicious", str(secret), output),
         }
-    if report["benign"]["open_result"] != "allowed":
+    if any(attempt["open_result"] != "allowed" for attempt in report["benign"]["attempts"]):
         raise SystemExit("benign operation was not allowed")
-    if report["suspicious"]["open_result"] != "denied":
+    if any(attempt["open_result"] != "denied" for attempt in report["suspicious"]["attempts"]):
         raise SystemExit("suspicious operation was not denied")
     report_path = output / "REPORT.json"
     report_path.write_text(json.dumps(report, indent=2) + "\n")
