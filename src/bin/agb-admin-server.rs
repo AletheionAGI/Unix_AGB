@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::env;
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -20,6 +21,32 @@ struct Response {
     operator: String,
 }
 
+fn peer_operator(stream: &UnixStream) -> String {
+    let mut credentials = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let mut length = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let result = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&mut credentials as *mut libc::ucred).cast(),
+            &mut length,
+        )
+    };
+    if result == 0 {
+        format!(
+            "pid:{}:uid:{}:gid:{}",
+            credentials.pid, credentials.uid, credentials.gid
+        )
+    } else {
+        "peer:unknown".into()
+    }
+}
+
 fn handle(
     mut stream: UnixStream,
     cache: &PathBuf,
@@ -32,6 +59,7 @@ fn handle(
         .unwrap_or(Ok(String::new()))
         .unwrap_or_default();
     let request: Result<Request, _> = serde_json::from_str(&line);
+    let peer = peer_operator(&stream);
     let now = Instant::now();
     while requests
         .front()
@@ -39,11 +67,7 @@ fn handle(
     {
         requests.pop_front();
     }
-    let operator = request
-        .as_ref()
-        .ok()
-        .map(|r| r.operator.clone())
-        .unwrap_or_else(|| "unknown".into());
+    let operator = peer;
     let response = if requests.len() >= 5 {
         Response {
             ok: false,
@@ -71,7 +95,7 @@ fn handle(
                 Response {
                     ok: result,
                     reason: reason.into(),
-                    operator: request.operator,
+                    operator: operator.clone(),
                 }
             }
             _ => Response {
