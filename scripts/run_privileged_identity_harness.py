@@ -33,6 +33,7 @@ def main() -> None:
         with tempfile.TemporaryDirectory(prefix="agb-privileged-identity-") as directory:
             base = Path(directory)
             base.chmod(0o755)
+            os.chown(base, account.pw_uid, account.pw_gid)
             lab_binary = base / "agb-admin-server"
             import shutil as _shutil
             _shutil.copy2(binary, lab_binary)
@@ -43,7 +44,9 @@ def main() -> None:
             try:
                 subprocess.run(["python3", str(root / "scripts/test_admin_uid_gid_matrix.py")], cwd=root, env=env, check=True)
                 audit = base / "audit"
-                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "audit_exists": audit.exists()}, indent=2))
+                if not audit.exists():
+                    raise SystemExit("admin server did not create audit log")
+                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "audit_exists": True}, indent=2))
             finally:
                 process.terminate()
                 process.wait(timeout=5)
