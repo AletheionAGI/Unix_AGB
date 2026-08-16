@@ -1,0 +1,12 @@
+{
+  "corpus_version": "gate2-adversarial-v2",
+  "seeds": [1701, 2718, 3141],
+  "benign_cases": 30,
+  "malicious_cases": 30,
+  "distractor_range": [8, 24],
+  "benign_families": ["clean", "trusted-network", "risk-then-reset"],
+  "malicious_families": ["risk-long-gap", "trusted-then-risk", "repeated-risk"],
+  "terminal_operation": "file.open",
+  "terminal_resource": "/run/secrets/api-token",
+  "limitations": "Synthetic adversarial relation-recall corpus; it is not natural Linux telemetry or independent security validation."
+}

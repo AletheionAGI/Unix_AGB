@@ -3,6 +3,12 @@
   "schema_version": "1.0",
   "canonical_store": "var/events.jsonl",
   "asm_socket": "var/agb-asm.sock",
+  "state_engine": "stateful-proxy",
+  "state_snapshot": "var/stateful-proxy.json",
+  "configuration_fingerprint": "config:gate2-v1",
+  "asm_cm_checkpoint": null,
+  "asm_cm_checkpoint_sha256": null,
+  "asm_source_revision": null,
   "max_event_bytes": 65536,
   "accepted_provenance": ["synthetic"],
   "enforcement_backend": "fake"

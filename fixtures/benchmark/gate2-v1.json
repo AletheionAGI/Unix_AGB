@@ -1,0 +1,10 @@
+{
+  "corpus_version": "gate2-v1",
+  "seeds": [1701, 2718, 3141],
+  "trajectories_per_class": 20,
+  "terminal_operation": "file.open",
+  "terminal_resource": "/run/secrets/api-token",
+  "benign_recipe": ["process.exec", "file.open:local-config", "file.open:credential"],
+  "malicious_recipe": ["process.exec", "network.connect", "noise:0..5", "file.open:credential"],
+  "limitations": "Synthetic controlled trajectories; not a security-efficacy dataset."
+}

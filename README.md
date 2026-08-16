@@ -98,6 +98,36 @@ PYTHONPATH=python python3 -m agb_fake_asm.server \
 `make benchmark` measures only the deterministic fake-engine plumbing. It is
 not evidence of security efficacy or production performance.
 
+`make benchmark-gate2` runs the frozen 40-trajectory Gate 2 experiment across
+event-local, sequence-rule, sliding-window, and deterministic stateful-proxy
+modes. It also proves restart, corrupt-snapshot rejection, sequence-gap
+abstention, and namespace isolation. Mode D is an integration seam for a future
+ASM-CM backend; it is not learned state and cannot support an ASM efficacy
+claim.
+
+To run Mode D with the real promoted ASM-CM checkpoint, create the optional
+environment with `python3 -m venv .venv && .venv/bin/pip install -r
+requirements-asm.txt`, then provide the external checkpoint and source
+fingerprints:
+
+```bash
+ASM_CM_CHECKPOINT=/path/to/checkpoint_final.pt \
+ASM_CM_CHECKPOINT_SHA256=<sha256> \
+ASM_SOURCE_ROOT=/path/to/ASM/src \
+ASM_SOURCE_REVISION=<git-commit> \
+make benchmark-gate2-asm-cm
+```
+
+The Make target uses CUDA by default. Set `ASM_DEVICE=cpu` explicitly on hosts
+without a compatible GPU. The checkpoint is deliberately not copied into
+Unix-AGB or committed.
+
+`make benchmark-gate2-multiseed` runs the adversarial v2 corpus over exactly
+three promoted checkpoints. It requires `ASM_CM_SEED{1,2,3}_CHECKPOINT` and
+matching `ASM_CM_SEED{1,2,3}_SHA256` variables in addition to the ASM source
+root and revision. The report separates ingest/query latency and records peak
+CUDA allocated/reserved bytes.
+
 ## Reproducible causal proof
 
 The first controlled proof uses two isolated processes that perform the same

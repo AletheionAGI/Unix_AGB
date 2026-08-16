@@ -12,6 +12,9 @@ remains authoritative in `ROADMAP.md`.
   snapshot integrity;
 - reports 69–72: continuous BPF observation and the current BPF-to-broker
   request adapter.
+- report 73: frozen Gate 2 A–D benchmark and persistent stateful-proxy proof.
+- report 74: real promoted-checkpoint ASM-CM integration and seed-1 result.
+- report 75: adversarial multi-seed ASM-CM evaluation with CUDA accounting.
 
 ## Administrative boundary
 
@@ -29,7 +32,9 @@ remains authoritative in `ROADMAP.md`.
 - Gate 1 and Gate 4 contain laboratory prototypes only.
 - Reports marked “proof complete” establish only their narrowly stated test;
   they do not promote an entire Gate or establish production readiness.
-- Gate 2 ASM-CM state and Gate 3 policy evaluation remain unimplemented.
+- Gate 2 has deterministic and real ASM-CM integration prototypes. Security-
+  specific multi-seed efficacy remains unvalidated. Gate 3 policy evaluation
+  remains unimplemented.
 
 New work should update this index when it changes the current interpretation;
 small chronological reports may still be retained for reproducibility.

@@ -40,6 +40,26 @@ Restore fails closed on incompatible fingerprints, missing canonical events,
 sequence regression, or checksum failure. Reinitialization cannot broaden
 privilege.
 
+The Gate 2 deterministic proxy now implements the first version of this
+contract in `python/agb_fake_asm/persistent_engine.py`: it persists an engine
+fingerprint, configuration fingerprint, per-namespace revision and last event
+sequence, causal flags, evidence IDs, and a content checksum through an atomic
+temporary-file replacement followed by file and directory synchronization.
+Restore rejects corruption, incompatible formats, and fingerprint changes.
+Sequence gaps return `ABSTAIN` without checkpointing the incomplete update.
+
+This checksum detects accidental corruption but is not authentication against
+an attacker who can rewrite both content and digest. Signed or keyed snapshots
+and reconciliation with a durable canonical-store revision remain promotion
+requirements for a real ASM-CM backend.
+
+The real ASM-CM adapter persists only per-namespace inference tensors and
+canonical evidence mappings; the shared 84M-parameter model remains in its
+fingerprinted external checkpoint. State snapshots are written through an
+atomic replacement, paired with a SHA-256 sidecar, and loaded with PyTorch's
+restricted `weights_only` deserializer. Restore verifies both the state digest
+and originating model-checkpoint digest before exposing any recovered state.
+
 ## Production direction
 
 Before Gate 2 promotion, select and benchmark a transactional or checksummed

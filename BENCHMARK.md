@@ -28,6 +28,34 @@ unacceptable resource cost, false positives, or namespace leakage?
 - independent namespace and PID-reuse cases;
 - replay, duplicate, malformed, and event-gap cases.
 
+The first frozen controlled corpus is
+`fixtures/benchmark/gate2-v1.json`. Run `make benchmark-gate2` to expand its
+three fixed seeds into 20 benign and 20 malicious trajectories and write the
+machine-readable report to `var/benchmark/gate2-v1-report.json`. Every mode
+receives the same expanded events. The report includes a manifest digest,
+terminal-decision digests, confusion matrices, latency percentiles, Python peak
+allocation, snapshot size, and recovery proofs.
+
+Mode D currently uses `D:stateful-proxy`, a deterministic persistent adapter.
+It validates the process and persistence boundary but is not Mode D's eventual
+ASM-CM implementation. Gate 2 cannot be promoted from proxy results.
+
+The optional `make benchmark-gate2-asm-cm` replaces only Mode D with the real
+durable fast-weight ASM-CM adapter. It requires explicit checkpoint SHA-256 and
+ASM source revision inputs, records both in the report, and keeps the neural
+state outside the Rust gateway process. ASM-CM selects canonical evidence IDs;
+the deterministic Unix-AGB policy remains responsible for the final effect.
+
+The adversarial multi-seed protocol is frozen in
+`fixtures/benchmark/gate2-adversarial-v2.json` and executed with
+`make benchmark-gate2-multiseed`. It contains 60 balanced trajectories across
+clean, trusted-network, risk-then-reset, long-gap risk, trusted-then-risk, and
+repeated-risk families. Each malicious relation is separated from the terminal
+credential access by 8–24 distractors. Promotion requires every ASM-CM seed to
+be non-inferior to the strong sequence baseline and at least two seeds to
+strictly exceed its accuracy. A perfect sequence baseline therefore blocks an
+unsupported superiority claim even when ASM-CM is also perfect.
+
 The Gate 0 synthetic generator is plumbing evidence only. It is not a detection
 benchmark and cannot support security efficacy claims.
 

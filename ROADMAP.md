@@ -13,7 +13,7 @@ production observer or system-wide enforcement service exists yet.
 |---:|---|---|
 | 0 | Architecture, licensing, contracts, threat model, benchmark plan | Complete |
 | 1 | Ubuntu observer and canonical event pipeline | Prototype |
-| 2 | ASM-CM state runtime and persistence | Not started |
+| 2 | ASM-CM state runtime and persistence | Real integration prototype |
 | 3 | Explicit policy engine and dry-run decisions | Not started |
 | 4 | Narrow deterministic enforcement pilot | Laboratory prototype |
 | 5 | AI-agent capability broker | Not started |
@@ -80,6 +80,16 @@ audit persistence, and admin-server restart, are recorded in
 `docs/report/53_dual_identity_restart_proof_complete_20260815.md`.
 
 ## Gate 2 — ASM-CM state runtime
+
+The repository now contains a deterministic `StateEngine` seam, a Python
+stateful proxy, and a real promoted-checkpoint ASM-CM adapter behind the
+Unix-socket boundary. Both have checksummed snapshots and participate in the
+frozen A–D comparison harness. The real seed-1 integration validates checkpoint
+loading, evidence selection, restart, and corrupt-state rejection, not general
+security efficacy. Three promoted checkpoints now pass the frozen adversarial
+v2 corpus without seed variance, but tie the strong deterministic sequence
+baseline. Independent natural telemetry, replay from the canonical store, and
+production resource accounting remain outstanding.
 
 - create isolated state per security namespace;
 - implement event-to-state updates and deterministic revisions;

@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -13,6 +13,29 @@ generate:
 
 benchmark:
 	PYTHONPATH=python:scripts python3 scripts/benchmark_synthetic.py
+
+benchmark-gate2:
+	PYTHONPATH=python:scripts python3 scripts/benchmark_gate2.py
+
+benchmark-gate2-asm-cm:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/benchmark_gate2.py \
+		--mode-d asm-cm \
+		--asm-checkpoint "$${ASM_CM_CHECKPOINT:?set ASM_CM_CHECKPOINT}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
+		--asm-checkpoint-sha256 "$${ASM_CM_CHECKPOINT_SHA256:?set ASM_CM_CHECKPOINT_SHA256}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--output var/benchmark/gate2-v1-asm-cm-report.json
+
+benchmark-gate2-multiseed:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/benchmark_gate2_multiseed.py \
+		--checkpoint "1:$${ASM_CM_SEED1_CHECKPOINT:?set ASM_CM_SEED1_CHECKPOINT}:$${ASM_CM_SEED1_SHA256:?set ASM_CM_SEED1_SHA256}" \
+		--checkpoint "2:$${ASM_CM_SEED2_CHECKPOINT:?set ASM_CM_SEED2_CHECKPOINT}:$${ASM_CM_SEED2_SHA256:?set ASM_CM_SEED2_SHA256}" \
+		--checkpoint "3:$${ASM_CM_SEED3_CHECKPOINT:?set ASM_CM_SEED3_CHECKPOINT}:$${ASM_CM_SEED3_SHA256:?set ASM_CM_SEED3_SHA256}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--output var/benchmark/gate2-adversarial-v2-multiseed.json
 
 causal-proof:
 	cargo run --quiet --bin agb-causal-proof
