@@ -21,7 +21,7 @@ struct Response {
     operator: String,
 }
 
-fn peer_operator(stream: &UnixStream) -> String {
+fn peer_credentials(stream: &UnixStream) -> Option<libc::ucred> {
     let mut credentials = libc::ucred {
         pid: 0,
         uid: 0,
@@ -37,14 +37,28 @@ fn peer_operator(stream: &UnixStream) -> String {
             &mut length,
         )
     };
-    if result == 0 {
-        format!(
-            "pid:{}:uid:{}:gid:{}",
-            credentials.pid, credentials.uid, credentials.gid
-        )
-    } else {
-        "peer:unknown".into()
+    if result == 0 { Some(credentials) } else { None }
+}
+
+fn peer_allowed(credentials: Option<libc::ucred>) -> bool {
+    let Some(credentials) = credentials else {
+        return false;
+    };
+    for (name, value) in [
+        ("AGB_ADMIN_UIDS", credentials.uid),
+        ("AGB_ADMIN_GIDS", credentials.gid),
+    ] {
+        if let Ok(allowlist) = env::var(name) {
+            if !allowlist
+                .split(',')
+                .filter_map(|item| item.trim().parse::<u32>().ok())
+                .any(|item| item == value)
+            {
+                return false;
+            }
+        }
     }
+    true
 }
 
 fn handle(
@@ -59,7 +73,10 @@ fn handle(
         .unwrap_or(Ok(String::new()))
         .unwrap_or_default();
     let request: Result<Request, _> = serde_json::from_str(&line);
-    let peer = peer_operator(&stream);
+    let credentials = peer_credentials(&stream);
+    let peer = credentials
+        .map(|c| format!("pid:{}:uid:{}:gid:{}", c.pid, c.uid, c.gid))
+        .unwrap_or_else(|| "peer:unknown".into());
     let now = Instant::now();
     while requests
         .front()
@@ -68,7 +85,13 @@ fn handle(
         requests.pop_front();
     }
     let operator = peer;
-    let response = if requests.len() >= 5 {
+    let response = if !peer_allowed(credentials) {
+        Response {
+            ok: false,
+            reason: "peer-not-allowlisted".into(),
+            operator: peer,
+        }
+    } else if requests.len() >= 5 {
         Response {
             ok: false,
             reason: "rate-limit".into(),
