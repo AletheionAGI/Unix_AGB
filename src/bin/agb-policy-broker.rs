@@ -207,6 +207,12 @@ fn main() -> Result<(), String> {
     let cache_path = std::env::args()
         .nth(3)
         .unwrap_or_else(|| "var/policy-cache.jsonl".into());
+    if std::env::var("AGB_CACHE_ROTATE").as_deref() == Ok("1") {
+        let rotated = format!("{}.rotated", cache_path);
+        if PathBuf::from(&cache_path).exists() {
+            std::fs::rename(&cache_path, rotated).map_err(|e| e.to_string())?;
+        }
+    }
     let socket_path = PathBuf::from(&socket);
     if socket_path.exists() {
         std::fs::remove_file(&socket_path).map_err(|e| e.to_string())?;
