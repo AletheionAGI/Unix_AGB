@@ -16,6 +16,10 @@ struct Request {
     resource: String,
     policy_revision: String,
     requested_effect: String,
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    operation: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,11 +79,55 @@ struct Broker {
 impl Broker {
     fn decide(&mut self, request: Result<Request, serde_json::Error>) -> Response {
         let request = match request {
-            Ok(request) if !request.namespace_id.is_empty() && !request.resource.is_empty() => {
-                request
-            }
+            Ok(request) => request,
             _ => return Self::fallback("invalid request"),
         };
+        if request.request_type.as_deref() == Some("admin") {
+            let expected = std::env::var("AGB_ADMIN_TOKEN").unwrap_or_default();
+            if expected.is_empty() || request.token.as_deref() != Some(expected.as_str()) {
+                return Self::fallback("invalid admin token");
+            }
+            return match request.operation.as_deref() {
+                Some("list") => self.record(Response {
+                    schema_version: "1.0",
+                    effect: "ALLOW".into(),
+                    backend: "seccomp-user-notify",
+                    applied: false,
+                    cache_hit: false,
+                    fallback: false,
+                    policy_revision: "policy:admin".into(),
+                    reason: "admin-list-ok".into(),
+                }),
+                Some("rotate") => {
+                    let rotated = format!("{}.rotated", self.cache_path.display());
+                    let result = if self.cache_path.exists() {
+                        std::fs::rename(&self.cache_path, rotated).is_ok()
+                    } else {
+                        true
+                    };
+                    self.cache.clear();
+                    self.record(Response {
+                        schema_version: "1.0",
+                        effect: if result { "ALLOW" } else { "DENY" }.into(),
+                        backend: "seccomp-user-notify",
+                        applied: result,
+                        cache_hit: false,
+                        fallback: !result,
+                        policy_revision: "policy:admin".into(),
+                        reason: if result {
+                            "admin-rotate-ok"
+                        } else {
+                            "admin-rotate-failed"
+                        }
+                        .into(),
+                    })
+                }
+                _ => Self::fallback("unsupported admin operation"),
+            };
+        }
+        if request.namespace_id.is_empty() || request.resource.is_empty() {
+            return Self::fallback("invalid request");
+        }
         if request.request_type.as_deref() == Some("health") {
             return self.record(Response {
                 schema_version: "1.0",
