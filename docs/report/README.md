@@ -20,8 +20,8 @@ remains authoritative in `ROADMAP.md`.
   false positives, full decision coverage, and measured per-event CUDA cost.
 - report 78: protected three-family multi-seed evidence that satisfies the
   frozen Gate 2 promotion criterion, with explicit controlled-lab limitations.
-- report 79: snapshot-v4 vectorized query optimization, CPU equivalence, and
-  the outstanding CUDA remeasurement requirement.
+- report 79: snapshot-v4 vectorized query optimization with CPU equivalence and
+  RTX 4090 confirmation, reducing protected-query p50 by approximately 22×.
 
 ## Administrative boundary
 

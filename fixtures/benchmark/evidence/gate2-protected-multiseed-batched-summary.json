@@ -1,0 +1,39 @@
+{
+  "benchmark": "unix-agb-gate2-adversarial-v2-multiseed",
+  "benchmark_report_sha256": "458100b3a185a6265f1e0d3db8769988e820325007ea92c52fb342dfc1859830",
+  "dataset_sha256": "ae165d68603180df880de933ed8fb6a84137aac14cc1e8bdab65de259dd53740",
+  "device": "cuda",
+  "gate2_promoted": true,
+  "implementation": "snapshot-v4-vectorized-query",
+  "inference_policy": "security-relevant",
+  "source_revision": "4c8eddf2f07d9aec800769323d7e1effbd64815a",
+  "test": {
+    "benign": 70,
+    "events": 987,
+    "malicious": 71,
+    "trajectories": 141
+  },
+  "aggregate": {
+    "accuracy_mean": 1.0,
+    "accuracy_population_stddev": 0.0,
+    "sequence_accuracy": 0.6737588652482269,
+    "strict_advantage_seed_count": 3
+  },
+  "asm_cm_confusion_per_seed": {
+    "abstain": 0,
+    "fn": 0,
+    "fp": 0,
+    "tn": 70,
+    "tp": 71
+  },
+  "query_latency_us": {
+    "1": {"p50": 23478.881, "p95": 24862.473, "p99": 28133.858},
+    "2": {"p50": 22986.434, "p95": 23868.932, "p99": 24603.898},
+    "3": {"p50": 22897.103, "p95": 24145.868, "p99": 24727.324}
+  },
+  "accelerator_memory_bytes": {
+    "1": {"max_allocated": 370268160, "max_reserved": 396361728},
+    "2": {"max_allocated": 371707904, "max_reserved": 396361728},
+    "3": {"max_allocated": 371707904, "max_reserved": 396361728}
+  }
+}

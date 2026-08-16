@@ -127,9 +127,11 @@ production-enforcement validation. See report 78.
 The post-promotion snapshot-v4 adapter defers neural work until protected
 queries and evaluates the preserved MQAR sequence in one vectorized forward
 pass. CPU equivalence checks across relation keys retained identical predictions
-and confidence while reducing isolated query latency by 13–25×. A fresh CUDA
-multi-seed benchmark is required to record production-relevant latency and to
-confirm the promoted confusion matrix under the optimized implementation.
+and confidence while reducing isolated query latency by 13–25×. The subsequent
+RTX 4090 multi-seed run preserved the promoted confusion matrix and reduced
+protected-query p50 from roughly 515–521 ms to 22,9–23,5 ms (about 22×), while
+cutting inference count from 212 to 141. This remains too slow for synchronous
+syscall enforcement; Gate 3 must compile deterministic decisions for the hot path.
 
 - create isolated state per security namespace;
 - implement event-to-state updates and deterministic revisions;

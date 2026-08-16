@@ -32,9 +32,26 @@ No teste isolado seed 1, a mesma consulta caiu de 1,25–1,52 s para 54–98 ms,
 um ganho de 13–25× em CPU. O número de inferências no benchmark caiu de 212
 (origens mais consultas) para 141 (somente consultas).
 
-## Limitação
+## Medição CUDA
 
-O sandbox não expõe CUDA. Esses números verificam equivalência e direção do
-ganho, mas não substituem uma nova medição na RTX 4090. O relatório CUDA
-otimizado deve ser gravado em arquivo separado da evidência pré-otimização e
-comparado por matriz de confusão, cobertura, latência e memória.
+Uma execução posterior na NVIDIA GeForce RTX 4090 preservou, nas três seeds, a
+matriz `TN=70, TP=71, FP=0, FN=0, abstain=0`, cobertura integral e
+`gate2_promoted: true`. O relatório
+`var/benchmark/gate2-independent-multiseed-batched.json` tinha SHA-256
+`458100b3a185a6265f1e0d3db8769988e820325007ea92c52fb342dfc1859830`.
+
+| Seed | Consulta p50 | p95 | p99 | CUDA alocada máx. | CUDA reservada máx. |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 23,48 ms | 24,86 ms | 28,13 ms | 370.268.160 B | 396.361.728 B |
+| 2 | 22,99 ms | 23,87 ms | 24,60 ms | 371.707.904 B | 396.361.728 B |
+| 3 | 22,90 ms | 24,15 ms | 24,73 ms | 371.707.904 B | 396.361.728 B |
+
+Comparado à etapa 78, o p50 de consulta melhorou aproximadamente 22× e o
+número de inferências caiu de 212 para 141 (33,5%). A reserva máxima CUDA caiu
+de 432.013.312 B para 396.361.728 B. O resumo versionado está em
+`fixtures/benchmark/evidence/gate2-protected-multiseed-batched-summary.json`.
+
+Apesar do ganho, aproximadamente 23 ms ainda é muito superior ao baseline
+determinístico de microssegundos. Portanto, a conclusão arquitetural não muda:
+o hot path de enforcement deve usar decisões determinísticas pré-computadas; a
+consulta neural permanece assíncrona ou fora da syscall bloqueada.
