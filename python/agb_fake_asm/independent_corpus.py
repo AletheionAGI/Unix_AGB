@@ -112,6 +112,7 @@ def load_independent_corpus(
                     "case_id": item["trajectory_id"],
                     "family": item["family"],
                     "malicious": item["label"] == "malicious",
+                    "review_confidence": item.get("review_confidence", "high"),
                     "split": item["split"],
                     "coverage_scope": item["coverage_scope"],
                     "coverage_config_sha256": item["coverage_config_sha256"],

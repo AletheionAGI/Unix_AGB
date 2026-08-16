@@ -141,6 +141,16 @@ uncertainty for audit, filtering, and later re-review. It is not an authorizatio
 to repeat the behavior. Malicious and ordinary benign decisions default to high
 confidence; legacy reviews without the field are interpreted as high confidence.
 
+Benchmark reports treat abstention as selective non-coverage, never as a true
+negative or false negative. They publish decision coverage and abstention rate,
+retain abstentions per executable family and review-confidence stratum, and
+penalize abstention in aggregate accuracy used for promotion. When candidate
+windows preserve a canonical `provenance.source_sequence`, evaluation uses that
+sequence to continue state across windows from the same exact process instead
+of interpreting every derived window boundary as a sequence gap. Reports also
+separate all-event, ingest, query, and model-inference latency; an empty class is
+represented by a zero sample count and null percentiles.
+
 Consequently, marking a `file.open` trajectory benign never grants egress
 permission. A strong exfiltration finding requires a causal chain from process
 identity through file read and outbound send, including destination and policy

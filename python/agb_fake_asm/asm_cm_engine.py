@@ -172,6 +172,7 @@ class AsmCmEngine:
                 "evidence_ids": [event["event_id"]],
                 "state_revision": state.revision,
                 "checkpoint_fingerprint": self.checkpoint_sha256,
+                "model_inference_performed": False,
             }
         previous = copy.deepcopy(state)
         try:
@@ -216,6 +217,7 @@ class AsmCmEngine:
                 "confidence": confidence,
                 "state_revision": state.revision,
                 "checkpoint_fingerprint": self.checkpoint_sha256,
+                "model_inference_performed": True,
             }
             if self.snapshot:
                 self.checkpoint_state(self.snapshot)

@@ -155,39 +155,63 @@ def evaluate(engine_factory: Any, trajectories: list[dict[str, Any]]) -> dict[st
     latencies: list[float] = []
     ingest_latencies: list[float] = []
     query_latencies: list[float] = []
-    tp = fp = tn = fn = abstain = 0
+    model_inference_latencies: list[float] = []
     terminal_decisions: list[dict[str, Any]] = []
+    total_counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "abstain": 0}
     family_counts: dict[str, dict[str, int]] = {}
+    confidence_counts: dict[str, dict[str, int]] = {}
+
+    def empty_counts() -> dict[str, int]:
+        return {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "abstain": 0}
+
+    def record(counts: dict[str, int], actual: bool, effect: str) -> None:
+        if effect == "ABSTAIN":
+            counts["abstain"] += 1
+            return
+        predicted = effect == "DENY"
+        if actual and predicted:
+            counts["tp"] += 1
+        elif actual:
+            counts["fn"] += 1
+        elif predicted:
+            counts["fp"] += 1
+        else:
+            counts["tn"] += 1
+
     if hasattr(engine, "reset_peak_memory_stats"):
         engine.reset_peak_memory_stats()
     tracemalloc.start()
     for trajectory in trajectories:
         decision: dict[str, Any] = {}
         for event in trajectory["events"]:
+            source_sequence = event.get("provenance", {}).get("source_sequence")
+            evaluation_event = (
+                {**event, "sequence": source_sequence}
+                if isinstance(source_sequence, int)
+                else event
+            )
             if hasattr(engine, "synchronize"):
                 engine.synchronize()
             started = time.perf_counter_ns()
-            decision = engine.update(event)
+            decision = engine.update(evaluation_event)
             if hasattr(engine, "synchronize"):
                 engine.synchronize()
             elapsed_us = (time.perf_counter_ns() - started) / 1_000
             latencies.append(elapsed_us)
             is_query = event["operation"] == "file.open" and "credential" in event.get("labels", [])
             (query_latencies if is_query else ingest_latencies).append(elapsed_us)
-        predicted = decision["effect"] == "DENY"
+            if decision.get("model_inference_performed", False):
+                model_inference_latencies.append(elapsed_us)
         terminal_decisions.append(decision)
-        abstain += decision["effect"] == "ABSTAIN"
         actual = trajectory["malicious"]
-        tp += actual and predicted
-        fp += (not actual) and predicted
-        tn += (not actual) and (not predicted)
-        fn += actual and (not predicted)
+        effect = decision["effect"]
+        record(total_counts, actual, effect)
         family = trajectory.get("family", "default")
-        counts = family_counts.setdefault(family, {"tp": 0, "fp": 0, "tn": 0, "fn": 0})
-        counts["tp"] += int(actual and predicted)
-        counts["fp"] += int((not actual) and predicted)
-        counts["tn"] += int((not actual) and (not predicted))
-        counts["fn"] += int(actual and (not predicted))
+        record(family_counts.setdefault(family, empty_counts()), actual, effect)
+        review_confidence = trajectory.get("review_confidence", "high")
+        record(
+            confidence_counts.setdefault(review_confidence, empty_counts()), actual, effect
+        )
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
@@ -201,16 +225,33 @@ def evaluate(engine_factory: Any, trajectories: list[dict[str, Any]]) -> dict[st
             "p99": percentile(samples, 0.99),
         }
 
+    decided = sum(total_counts[key] for key in ("tp", "fp", "tn", "fn"))
+    total = decided + total_counts["abstain"]
     return {
         "engine": engine.name,
-        "confusion": {"tp": tp, "fp": fp, "tn": tn, "fn": fn, "abstain": abstain},
+        "confusion": total_counts,
+        "decision_coverage": {
+            "trajectory_count": total,
+            "decided": decided,
+            "abstained": total_counts["abstain"],
+            "rate": decided / total if total else 0.0,
+        },
         "families": family_counts,
-        "precision": tp / (tp + fp) if tp + fp else 0.0,
-        "recall": tp / (tp + fn) if tp + fn else 0.0,
-        "false_positive_rate": fp / (fp + tn) if fp + tn else 0.0,
+        "review_confidence_strata": confidence_counts,
+        "precision": total_counts["tp"] / (total_counts["tp"] + total_counts["fp"])
+        if total_counts["tp"] + total_counts["fp"]
+        else 0.0,
+        "recall": total_counts["tp"] / (total_counts["tp"] + total_counts["fn"])
+        if total_counts["tp"] + total_counts["fn"]
+        else 0.0,
+        "false_positive_rate": total_counts["fp"] / (total_counts["fp"] + total_counts["tn"])
+        if total_counts["fp"] + total_counts["tn"]
+        else 0.0,
+        "abstention_rate": total_counts["abstain"] / total if total else 0.0,
         "latency_us": latency_summary(latencies),
         "ingest_latency_us": latency_summary(ingest_latencies),
         "query_latency_us": latency_summary(query_latencies),
+        "model_inference_latency_us": latency_summary(model_inference_latencies),
         "python_peak_bytes": peak,
         "accelerator_memory": (
             engine.accelerator_memory() if hasattr(engine, "accelerator_memory") else None

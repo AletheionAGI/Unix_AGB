@@ -69,6 +69,17 @@ class IndependentCorpusTests(unittest.TestCase):
             self.assertEqual(manifest["evaluation"]["security_efficacy"]["trajectories"], 2)
             self.assertEqual(len(load_independent_corpus(path, split="test")), 1)
 
+    def test_review_confidence_is_preserved_for_benchmark_strata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "corpus.jsonl"
+            item = trajectory(
+                "confidence", "process:boot-a:10:100", "test", "benign"
+            )
+            item["review_confidence"] = "low"
+            path.write_text(json.dumps(item) + "\n")
+            loaded = load_independent_corpus(path, split="test")
+            self.assertEqual(loaded[0]["review_confidence"], "low")
+
     def test_external_telemetry_is_counted_but_cannot_promote(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = self.write(

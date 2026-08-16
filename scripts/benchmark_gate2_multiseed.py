@@ -28,7 +28,13 @@ def checkpoint_spec(value: str) -> tuple[int, Path, str]:
 
 def accuracy(result: dict[str, Any]) -> float:
     counts = result["confusion"]
-    total = counts["tp"] + counts["fp"] + counts["tn"] + counts["fn"]
+    total = (
+        counts["tp"]
+        + counts["fp"]
+        + counts["tn"]
+        + counts["fn"]
+        + counts["abstain"]
+    )
     return (counts["tp"] + counts["tn"]) / total
 
 

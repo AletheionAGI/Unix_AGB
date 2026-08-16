@@ -15,7 +15,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from agb_fake_asm import AsmCmEngine, AsmCmUnavailable, PersistentStatefulProxy, SnapshotError
 from agb_fake_asm.server import StateEngineServer
 from benchmark_gate2 import adversarial_corpus, corpus, evaluate, persistence_proofs
+from benchmark_gate2_multiseed import accuracy
 from agb_fake_asm import EventLocalEngine, SequenceRuleEngine, SlidingWindowEngine, StatefulProxyEngine
+
+
+class AlwaysAbstainEngine:
+    name = "test:always-abstain"
+
+    def update(self, event):
+        return {"effect": "ABSTAIN", "event_id": event["event_id"]}
 
 
 class Gate2BenchmarkTests(unittest.TestCase):
@@ -63,6 +71,30 @@ class Gate2BenchmarkTests(unittest.TestCase):
             {"sample_count": 0, "p50": None, "p95": None, "p99": None},
         )
         self.assertEqual(result["latency_us"]["sample_count"], len(trajectory["events"]))
+
+    def test_abstention_is_not_counted_as_true_negative(self) -> None:
+        result = evaluate(AlwaysAbstainEngine, [self.trajectories[0]])
+        self.assertEqual(
+            result["confusion"],
+            {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "abstain": 1},
+        )
+        self.assertEqual(result["decision_coverage"]["rate"], 0.0)
+        self.assertEqual(accuracy(result), 0.0)
+        self.assertEqual(result["families"]["default"]["abstain"], 1)
+
+    def test_source_sequence_preserves_state_across_candidate_windows(self) -> None:
+        first = dict(self.trajectories[0]["events"][0])
+        first["provenance"] = {**first.get("provenance", {}), "source_sequence": 1}
+        second = {**first, "event_id": "event:continuation", "sequence": 1}
+        second["provenance"] = {**first["provenance"], "source_sequence": 2}
+        base = {"malicious": False, "family": "windowed", "review_confidence": "low"}
+        result = evaluate(
+            StatefulProxyEngine,
+            [{**base, "events": [first]}, {**base, "events": [second]}],
+        )
+        self.assertEqual(result["confusion"]["abstain"], 0)
+        self.assertEqual(result["decision_coverage"]["rate"], 1.0)
+        self.assertEqual(result["review_confidence_strata"]["low"]["tn"], 2)
 
     def test_restart_corruption_gap_and_namespace_proofs(self) -> None:
         self.assertTrue(all(persistence_proofs(self.trajectories).values()))
