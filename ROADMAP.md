@@ -73,7 +73,8 @@ Completed and documented in `docs/report/03` through `docs/report/46`:
 Still outstanding:
 
 - production observer and non-cooperative system-wide enforcement;
-- execution of shared-group and UID-only variants in the privileged harness;
+- shared-group and UID-only variants were executed successfully in the
+  privileged harness (see `docs/report/49`);
 - Gate 2 state runtime, Gate 3 policy engine, and Gates 5–7 deliverables.
 
 ## Gate 2 — ASM-CM state runtime
