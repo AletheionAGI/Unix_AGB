@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue export-reviewed-corpus freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -68,6 +68,17 @@ build-review-queue:
 		--input "$${AGB_CANDIDATES:-var/telemetry/trajectory-candidates.jsonl}" \
 		--output "$${AGB_REVIEW_QUEUE:-var/telemetry/review-queue.jsonl}" \
 		--review-template "$${AGB_REVIEWS:-var/telemetry/trajectory-reviews.jsonl}"
+
+build-review-html:
+	python3 scripts/build_review_html.py \
+		--input "$${AGB_REVIEW_QUEUE:-var/telemetry/review-queue.jsonl}" \
+		--output "$${AGB_REVIEW_HTML:-var/telemetry/review.html}"
+
+review-server:
+	python3 scripts/serve_review_ui.py \
+		--queue "$${AGB_REVIEW_QUEUE:-var/telemetry/review-queue.jsonl}" \
+		--reviews "$${AGB_REVIEWS:-var/telemetry/trajectory-reviews.jsonl}" \
+		--port "$${AGB_REVIEW_PORT:-8765}"
 
 export-reviewed-corpus:
 	PYTHONPATH=python:scripts python3 scripts/export_reviewed_corpus.py \

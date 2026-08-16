@@ -170,6 +170,10 @@ creates a compact `review-queue.jsonl` plus a review template. Every
 `REVIEW_REQUIRED` value must be independently replaced; those placeholders are
 deliberately rejected by the exporter.
 
+`make review-server` serves the same interface only on `127.0.0.1` and writes
+each validated click atomically to `AGB_REVIEWS`. It uses a per-process CSRF
+token, sends no telemetry to the network, and stops with `Ctrl+C`.
+
 ```bash
 make export-reviewed-corpus
 AGB_INDEPENDENT_CORPUS="$PWD/var/telemetry/reviewed-trajectories.jsonl" make freeze-independent-corpus

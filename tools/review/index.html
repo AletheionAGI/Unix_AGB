@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'">
+  <title>Unix-AGB — revisão de trajetórias</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background:#090d14; color:#e7edf7 }
+    * { box-sizing:border-box } body { margin:0 } button,input { font:inherit }
+    header { position:sticky; top:0; z-index:2; padding:18px 24px; background:#0d1420ee; border-bottom:1px solid #263247 }
+    header div { max-width:1100px; margin:auto; display:flex; gap:16px; align-items:center; flex-wrap:wrap }
+    h1 { font-size:19px; margin:0; flex:1 } .muted { color:#91a0b8 } progress { width:240px; accent-color:#62d6a8 }
+    main { max-width:1100px; margin:24px auto; padding:0 20px 80px }
+    .card { background:#111a28; border:1px solid #293750; border-radius:14px; padding:20px; box-shadow:0 16px 50px #0005 }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px }
+    .field { background:#0b121d; border-radius:9px; padding:10px 12px; overflow-wrap:anywhere }
+    .field b { display:block; color:#8da1c0; font-size:12px; text-transform:uppercase; letter-spacing:.06em }
+    pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#080d15; padding:14px; border-radius:9px; max-height:260px; overflow:auto }
+    label { display:block; margin-top:16px; color:#aebbd0 } input { width:100%; padding:10px; border-radius:8px; border:1px solid #354762; background:#080d15; color:#fff }
+    .actions,.nav { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px }
+    button { border:0; border-radius:9px; padding:11px 16px; cursor:pointer; background:#26354b; color:#fff }
+    button:hover { filter:brightness(1.18) } .benign { background:#157451 } .malicious { background:#a93847 }
+    .export { background:#315ca8 } .danger { color:#ff9ba8 } #notice { min-height:24px; margin:10px 0 }
+    @media (max-width:600px) { progress { width:100% } header { padding:14px } main { padding:0 12px 60px } }
+  </style>
+</head>
+<body>
+<header><div><h1>Unix-AGB · revisão independente</h1><span id="counter"></span><progress id="progress"></progress></div></header>
+<main>
+  <p class="muted">Offline. O progresso fica somente neste navegador. Confirme evidências; não presuma que atividade incomum seja maliciosa.</p>
+  <div id="notice" role="status"></div>
+  <section class="card">
+    <div class="grid">
+      <div class="field"><b>Executável</b><span id="exe"></span></div>
+      <div class="field"><b>Processo</b><span id="process"></span></div>
+      <div class="field"><b>Janela</b><span id="window"></span></div>
+      <div class="field"><b>Split</b><span id="split"></span></div>
+    </div>
+    <h3>Operações</h3><pre id="operations"></pre>
+    <h3>Amostras de recursos</h3><pre id="resources"></pre>
+    <h3>Evento terminal</h3><pre id="terminal"></pre>
+    <label>Família <input id="family" placeholder="ex.: developer-tooling" required></label>
+    <label>Fonte da revisão <input id="source" value="human-review:local-ui" required></label>
+    <div class="actions">
+      <button class="benign" id="benign">✓ Benigno · OK</button>
+      <button class="malicious" id="malicious">⚠ Malicioso · OK</button>
+      <button id="clear">Limpar rótulo</button>
+    </div>
+    <div class="nav"><button id="prev">← Anterior</button><button id="next">Próximo →</button><button class="export" id="export">Baixar JSONL revisado</button></div>
+  </section>
+</main>
+<script>
+const DATA=__AGB_REVIEW_DATA__;
+const KEY=`unix-agb-review:${DATA.dataset_id}`;
+let reviews=DATA.initial_reviews||JSON.parse(localStorage.getItem(KEY)||"{}"); let index=0;
+const $=id=>document.getElementById(id);
+function familyDefault(item){const exe=item.subject?.exe||"unknown"; return exe.split("/").filter(Boolean).pop()||"unknown"}
+function save(){localStorage.setItem(KEY,JSON.stringify(reviews))}
+function render(){
+  const item=DATA.items[index], review=reviews[item.trajectory_id];
+  $("counter").textContent=`${Object.keys(reviews).length}/${DATA.items.length} · item ${index+1}`;
+  $("progress").max=DATA.items.length; $("progress").value=Object.keys(reviews).length;
+  $("exe").textContent=item.subject?.exe||"<indisponível>";
+  $("process").textContent=`PID ${item.subject?.pid} · UID ${item.subject?.uid} · GID ${item.subject?.gid}`;
+  $("window").textContent=`${item.event_count} eventos · seq ${item.source_sequence_first}–${item.source_sequence_last}`;
+  $("split").textContent=item.split;
+  $("operations").textContent=JSON.stringify(item.operation_counts,null,2);
+  $("resources").textContent=(item.resource_samples||[]).join("\n")||"(sem amostras)";
+  $("terminal").textContent=JSON.stringify(item.terminal,null,2);
+  $("family").value=review?.family||familyDefault(item); $("source").value=review?.label_source||"human-review:local-ui";
+  $("notice").textContent=review?`Revisado como ${review.label}.`:"Pendente de revisão.";
+  $("notice").className=review?.label==="malicious"?"danger":"";
+}
+async function classify(label){
+  const family=$("family").value.trim(), source=$("source").value.trim();
+  if(!family||!source){$("notice").textContent="Família e fonte são obrigatórias."; return}
+  const id=DATA.items[index].trajectory_id;
+  const review={trajectory_id:id,label,label_source:source,family};
+  if(DATA.server_mode){
+    try{
+      const response=await fetch("/api/review",{method:"POST",headers:{"Content-Type":"application/json","X-AGB-CSRF":DATA.csrf_token},body:JSON.stringify(review)});
+      if(!response.ok) throw new Error((await response.json()).error||"falha ao salvar");
+    }catch(error){$("notice").textContent=`Não foi possível salvar: ${error.message}`;return}
+  }
+  reviews[id]=review; save();
+  const pending=DATA.items.findIndex((item,i)=>i>index&&!reviews[item.trajectory_id]);
+  if(pending>=0) index=pending; else if(index<DATA.items.length-1) index++; render();
+}
+$("benign").onclick=()=>classify("benign"); $("malicious").onclick=()=>classify("malicious");
+$("clear").onclick=()=>{delete reviews[DATA.items[index].trajectory_id];save();render()};
+$("prev").onclick=()=>{index=Math.max(0,index-1);render()}; $("next").onclick=()=>{index=Math.min(DATA.items.length-1,index+1);render()};
+$("export").onclick=()=>{
+  const missing=DATA.items.filter(item=>!reviews[item.trajectory_id]);
+  if(missing.length){$("notice").textContent=`Ainda faltam ${missing.length} revisões.`;return}
+  const text=DATA.items.map(item=>JSON.stringify(reviews[item.trajectory_id])).join("\n")+"\n";
+  const link=document.createElement("a"); link.href=URL.createObjectURL(new Blob([text],{type:"application/x-ndjson"}));
+  link.download="trajectory-reviews.jsonl"; link.click(); URL.revokeObjectURL(link.href);
+};
+render();
+</script>
+</body>
+</html>
