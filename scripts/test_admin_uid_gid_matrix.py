@@ -9,6 +9,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import shutil
 from pathlib import Path
 
 
@@ -35,11 +36,14 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="agb-uid-gid-matrix-") as directory:
         base = Path(directory)
+        binary = base / "agb-admin-server"
+        shutil.copy2(root / "target/debug/agb-admin-server", binary)
+        binary.chmod(0o755)
         env = {**os.environ, "AGB_ADMIN_TOKEN": "matrix-token", "AGB_ADMIN_UIDS": str(os.getuid()), "AGB_ADMIN_GIDS": str(os.getgid())}
-        host = run([str(root / "target/debug/agb-admin-server"), str(base / "host.sock"), str(base / "host.cache"), str(base / "host.audit")], base / "host.sock", env)
+        host = run([str(binary), str(base / "host.sock"), str(base / "host.cache"), str(base / "host.audit")], base / "host.sock", env)
         mismatch_env = {**env, "AGB_ADMIN_GIDS": "4294967294"}
-        mismatch = run([str(root / "target/debug/agb-admin-server"), str(base / "mismatch.sock"), str(base / "mismatch.cache"), str(base / "mismatch.audit")], base / "mismatch.sock", mismatch_env)
-        userns = run(["unshare", "-Ur", str(root / "target/debug/agb-admin-server"), str(base / "userns.sock"), str(base / "userns.cache"), str(base / "userns.audit")], base / "userns.sock", env)
+        mismatch = run([str(binary), str(base / "mismatch.sock"), str(base / "mismatch.cache"), str(base / "mismatch.audit")], base / "mismatch.sock", mismatch_env)
+        userns = run(["unshare", "-Ur", str(binary), str(base / "userns.sock"), str(base / "userns.cache"), str(base / "userns.audit")], base / "userns.sock", env)
         report = {"host_uid": os.getuid(), "host_gid": os.getgid(), "host_allowed": host, "gid_mismatch": mismatch, "user_namespace": userns}
         print(json.dumps(report, indent=2))
         if host.get("reason") != "admin-ok" or mismatch.get("reason") != "peer-not-allowlisted" or userns.get("reason") != "peer-not-allowlisted":

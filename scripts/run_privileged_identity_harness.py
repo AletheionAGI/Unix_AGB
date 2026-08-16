@@ -32,8 +32,12 @@ def main() -> None:
             subprocess.run(["cargo", "build", "--quiet", "--bin", "agb-admin-server"], cwd=root, check=True)
         with tempfile.TemporaryDirectory(prefix="agb-privileged-identity-") as directory:
             base = Path(directory)
+            lab_binary = base / "agb-admin-server"
+            import shutil as _shutil
+            _shutil.copy2(binary, lab_binary)
+            lab_binary.chmod(0o755)
             env = {**os.environ, "AGB_ADMIN_TOKEN": "lab-token", "AGB_ADMIN_UIDS": str(account.pw_uid), "AGB_ADMIN_GIDS": str(account.pw_gid)}
-            command = ["runuser", "-u", name, "--", str(binary), str(base / "admin.sock"), str(base / "cache"), str(base / "audit")]
+            command = ["runuser", "-u", name, "--", str(lab_binary), str(base / "admin.sock"), str(base / "cache"), str(base / "audit")]
             process = subprocess.Popen(command, env=env)
             try:
                 subprocess.run(["python3", str(root / "scripts/test_admin_uid_gid_matrix.py")], cwd=root, env=env, check=True)
