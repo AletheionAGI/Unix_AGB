@@ -80,9 +80,13 @@ fn handle(
         .map(|c| format!("pid:{}:uid:{}:gid:{}", c.pid, c.uid, c.gid))
         .unwrap_or_else(|| "peer:unknown".into());
     let now = Instant::now();
+    let rate_window = env::var("AGB_ADMIN_RATE_WINDOW_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(60);
     while requests
         .front()
-        .is_some_and(|time| now.duration_since(*time) > Duration::from_secs(60))
+        .is_some_and(|time| now.duration_since(*time) > Duration::from_secs(rate_window))
     {
         requests.pop_front();
     }
