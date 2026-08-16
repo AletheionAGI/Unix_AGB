@@ -58,6 +58,24 @@ the system-wide enforcement path.
 
 No automatic blocking occurs in this gate.
 
+### 2026-08-15 implementation status
+
+Completed and documented in `docs/report/03` through `docs/report/46`:
+
+- persistent Rust policy broker and gateway handoff;
+- authenticated admin socket with peer UID/GID allowlists, rate limiting,
+  restart supervision, and audit JSONL;
+- atomic/fsync snapshot rotation with checksum/HMAC validation;
+- seccomp/user-notify and BPF normalization laboratory pipelines;
+- privileged laboratory proof with real allowlisted and outsider accounts,
+  including persisted `admin-ok` and `peer-not-allowlisted` decisions.
+
+Still outstanding:
+
+- production observer and non-cooperative system-wide enforcement;
+- execution of shared-group and UID-only variants in the privileged harness;
+- Gate 2 state runtime, Gate 3 policy engine, and Gates 5–7 deliverables.
+
 ## Gate 2 — ASM-CM state runtime
 
 - create isolated state per security namespace;
