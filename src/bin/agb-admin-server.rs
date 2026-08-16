@@ -18,6 +18,7 @@ struct Response {
     ok: bool,
     reason: String,
     operator: String,
+    authorization_revision: String,
 }
 
 fn peer_credentials(stream: &UnixStream) -> Option<libc::ucred> {
@@ -68,6 +69,8 @@ fn handle(
     audit: &PathBuf,
     requests: &mut VecDeque<Instant>,
 ) {
+    let authorization_revision = env::var("AGB_ADMIN_AUTHZ_REVISION")
+        .unwrap_or_else(|_| "default-v1".into());
     let line = BufReader::new(stream.try_clone().unwrap())
         .lines()
         .next()
@@ -95,12 +98,14 @@ fn handle(
             ok: false,
             reason: "peer-not-allowlisted".into(),
             operator: peer,
+            authorization_revision: authorization_revision.clone(),
         }
     } else if requests.len() >= 5 {
         Response {
             ok: false,
             reason: "rate-limit".into(),
             operator,
+            authorization_revision: authorization_revision.clone(),
         }
     } else {
         requests.push_back(now);
@@ -124,12 +129,14 @@ fn handle(
                     ok: result,
                     reason: reason.into(),
                     operator: operator.clone(),
+                    authorization_revision: authorization_revision.clone(),
                 }
             }
             _ => Response {
                 ok: false,
                 reason: "invalid-token-or-request".into(),
                 operator,
+                authorization_revision,
             },
         }
     };
