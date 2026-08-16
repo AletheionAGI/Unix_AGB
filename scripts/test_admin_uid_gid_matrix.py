@@ -36,6 +36,7 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="agb-uid-gid-matrix-") as directory:
         base = Path(directory)
+        base.chmod(0o755)
         binary = base / "agb-admin-server"
         shutil.copy2(root / "target/debug/agb-admin-server", binary)
         binary.chmod(0o755)
@@ -46,7 +47,8 @@ def main() -> None:
         userns = run(["unshare", "-Ur", str(binary), str(base / "userns.sock"), str(base / "userns.cache"), str(base / "userns.audit")], base / "userns.sock", env)
         report = {"host_uid": os.getuid(), "host_gid": os.getgid(), "host_allowed": host, "gid_mismatch": mismatch, "user_namespace": userns}
         print(json.dumps(report, indent=2))
-        if host.get("reason") != "admin-ok" or mismatch.get("reason") != "peer-not-allowlisted" or userns.get("reason") != "peer-not-allowlisted":
+        userns_ok = userns.get("reason") == ("admin-ok" if os.getuid() == 0 else "peer-not-allowlisted")
+        if host.get("reason") != "admin-ok" or mismatch.get("reason") != "peer-not-allowlisted" or not userns_ok:
             raise SystemExit("UID/GID matrix did not produce expected decisions")
 
 

@@ -32,6 +32,7 @@ def main() -> None:
             subprocess.run(["cargo", "build", "--quiet", "--bin", "agb-admin-server"], cwd=root, check=True)
         with tempfile.TemporaryDirectory(prefix="agb-privileged-identity-") as directory:
             base = Path(directory)
+            base.chmod(0o755)
             lab_binary = base / "agb-admin-server"
             import shutil as _shutil
             _shutil.copy2(binary, lab_binary)
