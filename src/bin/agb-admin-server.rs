@@ -44,11 +44,13 @@ fn peer_allowed(credentials: Option<libc::ucred>) -> bool {
     let Some(credentials) = credentials else {
         return false;
     };
+    let mut configured = false;
     for (name, value) in [
         ("AGB_ADMIN_UIDS", credentials.uid),
         ("AGB_ADMIN_GIDS", credentials.gid),
     ] {
         if let Ok(allowlist) = env::var(name) {
+            configured = true;
             if !allowlist
                 .split(',')
                 .filter_map(|item| item.trim().parse::<u32>().ok())
@@ -58,7 +60,7 @@ fn peer_allowed(credentials: Option<libc::ucred>) -> bool {
             }
         }
     }
-    true
+    configured || env::var("AGB_ADMIN_FAIL_CLOSED_CONFIG").ok().as_deref() != Some("1")
 }
 
 fn handle(
