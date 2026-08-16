@@ -18,6 +18,8 @@ class BpfNormalizerTests(unittest.TestCase):
         assert event is not None
         self.assertEqual(event["provenance"]["source"], "bpf")
         self.assertEqual(event["operation"], "process.exec")
+        self.assertEqual(event["subject"]["exe"], "/usr/bin/python3")
+        self.assertEqual(event["resource"]["path"], "/usr/bin/python3")
         self.assertEqual(event["sequence"], 1)
         self.assertIn("start_time_ns", event["subject"])
 

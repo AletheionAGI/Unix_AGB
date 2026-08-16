@@ -61,6 +61,11 @@ def normalize(
         gid=int(attributes["gid"]) if "gid" in attributes else None,
         fallback_exe=attributes.get("exe") or attributes.get("comm"),
     )
+    # sched_process_exec fires while /proc/<pid>/exe may still expose a
+    # transient identity.  The tracepoint filename is the executable that was
+    # actually selected by exec and is authoritative for this event.
+    if operation == "process.exec" and attributes.get("exe"):
+        subject["exe"] = attributes["exe"]
     namespace = f"process:{subject['boot_id']}:{pid}:{subject['start_time_ns']}"
     sequence = sequences.get(namespace, 0) + 1
     sequences[namespace] = sequence

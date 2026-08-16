@@ -49,6 +49,29 @@ def listener(expected: int) -> tuple[socket.socket, int, threading.Thread, list[
     return server, server.getsockname()[1], thread, failures
 
 
+def reconcile_controlled_identities(
+    events: list[dict[str, object]], ground_truth: dict[int, str], workload: Path
+) -> list[dict[str, object]]:
+    """Correct exec-time /proc races only for handshaken lab processes.
+
+    The raw capture remains untouched on disk.  A PID is reconciled only when
+    its exec tracepoint independently names the exact controlled workload.
+    """
+    expected_exe = str(workload)
+    proven_pids = {
+        int(event.get("subject", {}).get("pid", -1))
+        for event in events
+        if event.get("operation") == "process.exec"
+        and event.get("resource", {}).get("path") == expected_exe
+    }
+    for event in events:
+        subject = event.get("subject", {})
+        pid = int(subject.get("pid", -1))
+        if pid in ground_truth and pid in proven_pids:
+            subject["exe"] = expected_exe
+    return events
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bpftrace-command", default="sudo bpftrace")
@@ -158,8 +181,11 @@ def main() -> None:
     collector_revision = subprocess.check_output(
         [sys.executable, str(root / "scripts/fingerprint_collector.py")], text=True
     ).strip()
+    captured_events = reconcile_controlled_identities(
+        read_jsonl(events_path), ground_truth, workload
+    )
     candidates = build_candidates(
-        read_jsonl(events_path),
+        captured_events,
         collector_revision=collector_revision,
         coverage_scope="allowlist",
         protected_executables={str(workload)},
