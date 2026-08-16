@@ -11,7 +11,6 @@ use std::time::{Duration, Instant};
 struct Request {
     token: String,
     operation: String,
-    operator: String,
 }
 
 #[derive(Serialize)]
