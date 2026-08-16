@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline
+.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker
 
 test: test-python test-rust
 
@@ -31,3 +31,6 @@ seccomp-proof:
 bpf-pipeline:
 	cargo build --quiet --bin agb-gateway
 	python3 scripts/run_bpf_gateway_pipeline.py --input fixtures/events/bpf-sample.txt
+
+policy-broker:
+	cargo run --quiet --bin agb-policy-broker -- var/agb-policy.sock var/enforcement.jsonl
