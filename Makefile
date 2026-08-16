@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit
+.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing
 
 test: test-python test-rust
 
@@ -81,3 +81,7 @@ fail-closed-config:
 admin-rate-limit:
 	cargo build --quiet --bin agb-admin-server
 	python3 scripts/test_admin_rate_limit.py
+
+admin-operator-spoofing:
+	cargo build --quiet --bin agb-admin-server
+	python3 scripts/test_admin_operator_spoofing.py
