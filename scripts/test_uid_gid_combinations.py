@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Document and probe simultaneous UID/GID allowlist combinations."""
+"""Document simultaneous UID/GID allowlist combinations.
+
+Real account execution remains gated by the dedicated privileged harness.
+"""
 import json
 import os
 
