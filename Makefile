@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -36,6 +36,11 @@ benchmark-gate2-multiseed:
 		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
 		--device "$${ASM_DEVICE:-cuda}" \
 		--output var/benchmark/gate2-adversarial-v2-multiseed.json
+
+freeze-independent-corpus:
+	PYTHONPATH=python:scripts python3 scripts/freeze_independent_corpus.py \
+		--input "$${AGB_INDEPENDENT_CORPUS:?set AGB_INDEPENDENT_CORPUS}" \
+		--output "$${AGB_INDEPENDENT_MANIFEST:-var/benchmark/independent-manifest.json}"
 
 causal-proof:
 	cargo run --quiet --bin agb-causal-proof

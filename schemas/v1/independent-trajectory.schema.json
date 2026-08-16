@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unixagb.com/schemas/v1/independent-trajectory.schema.json",
+  "title": "IndependentTrajectory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["trajectory_id", "label", "label_source", "family", "split", "collector_revision", "events"],
+  "properties": {
+    "trajectory_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "label": { "enum": ["benign", "malicious"] },
+    "label_source": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "family": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "split": { "enum": ["calibration", "test"] },
+    "collector_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "security-event.schema.json" }
+    }
+  }
+}

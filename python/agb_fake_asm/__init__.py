@@ -10,6 +10,7 @@ from .benchmark_engines import (
     StatefulProxyEngine,
 )
 from .persistent_engine import PersistentStatefulProxy, SnapshotError
+from .independent_corpus import IndependentCorpusError, freeze_manifest, load_independent_corpus
 from .policy_cache import DecisionCache
 
 __all__ = [
@@ -24,4 +25,7 @@ __all__ = [
     "SlidingWindowEngine",
     "SnapshotError",
     "StatefulProxyEngine",
+    "IndependentCorpusError",
+    "freeze_manifest",
+    "load_independent_corpus",
 ]

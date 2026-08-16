@@ -91,6 +91,10 @@ v2 corpus without seed variance, but tie the strong deterministic sequence
 baseline. Independent natural telemetry, replay from the canonical store, and
 production resource accounting remain outstanding.
 
+The independent-telemetry contract and leakage-resistant split freezer are now
+implemented. Collection and external labeling remain outstanding; no synthetic
+fixture may satisfy that promotion requirement.
+
 - create isolated state per security namespace;
 - implement event-to-state updates and deterministic revisions;
 - account separately for retained state, snapshots, RSS/VRAM, and event storage;

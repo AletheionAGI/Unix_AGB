@@ -128,6 +128,18 @@ matching `ASM_CM_SEED{1,2,3}_SHA256` variables in addition to the ASM source
 root and revision. The report separates ingest/query latency and records peak
 CUDA allocated/reserved bytes.
 
+External telemetry must be frozen before evaluation:
+
+```bash
+AGB_INDEPENDENT_CORPUS=/path/to/reviewed-trajectories.jsonl \
+make freeze-independent-corpus
+```
+
+The validator rejects synthetic provenance, sequence gaps, duplicate event IDs,
+mixed namespaces within a trajectory, and namespace overlap between calibration
+and test. Unix-AGB ships the contract and tooling, not a fabricated “real”
+dataset.
+
 ## Reproducible causal proof
 
 The first controlled proof uses two isolated processes that perform the same

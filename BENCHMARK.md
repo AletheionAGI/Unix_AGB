@@ -56,6 +56,24 @@ be non-inferior to the strong sequence baseline and at least two seeds to
 strictly exceed its accuracy. A perfect sequence baseline therefore blocks an
 unsupported superiority claim even when ASM-CM is also perfect.
 
+## Independent telemetry protocol
+
+Promotion evidence must use JSONL records conforming to
+`schemas/v1/independent-trajectory.schema.json`. Labels require an external
+`label_source`, collector revision, family, and a preassigned `calibration` or
+`test` split. Every embedded event must carry non-synthetic provenance from
+`ptrace`, `bpf`, `audit`, or `agent-broker`.
+
+Run `make freeze-independent-corpus` before evaluation. The generated manifest
+binds the raw dataset SHA-256, class counts, event counts, families, and split
+sizes. Namespace overlap across splits, duplicate event IDs, sequence gaps, and
+synthetic provenance fail closed. Promotion eligibility requires at least 20
+benign and 20 malicious test trajectories across at least three families.
+
+The multi-seed runner accepts `--independent-dataset`; it evaluates only the
+frozen `test` split. Calibration data is available to pre-register policies but
+is never silently merged into the reported test result.
+
 The Gate 0 synthetic generator is plumbing evidence only. It is not a detection
 benchmark and cannot support security efficacy claims.
 

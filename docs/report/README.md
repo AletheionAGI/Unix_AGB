@@ -15,6 +15,7 @@ remains authoritative in `ROADMAP.md`.
 - report 73: frozen Gate 2 A–D benchmark and persistent stateful-proxy proof.
 - report 74: real promoted-checkpoint ASM-CM integration and seed-1 result.
 - report 75: adversarial multi-seed ASM-CM evaluation with CUDA accounting.
+- report 76: independent-telemetry contract and frozen-split tooling.
 
 ## Administrative boundary
 
