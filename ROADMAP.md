@@ -106,6 +106,11 @@ fixture may satisfy that promotion requirement.
 Independent trajectory protocol v2 separates protected security-efficacy from
 external false-positive monitoring. The freezer and review UI report both, while
 Gate 2 promotion consumes only the protected security-efficacy test queue.
+The first frozen external corpus now records 50 benign trajectories (37 test),
+including explicit reviewer-confidence strata. Three ASM-CM seeds produced zero
+false positives and full decision coverage, but approximately 20 ms median
+per-event neural latency. This is false-positive evidence only; it neither
+measures malicious recall nor promotes Gate 2. See report 77.
 
 - create isolated state per security namespace;
 - implement event-to-state updates and deterministic revisions;

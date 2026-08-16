@@ -16,6 +16,8 @@ remains authoritative in `ROADMAP.md`.
 - report 74: real promoted-checkpoint ASM-CM integration and seed-1 result.
 - report 75: adversarial multi-seed ASM-CM evaluation with CUDA accounting.
 - report 76: independent-telemetry contract and frozen-split tooling.
+- report 77: external benign telemetry across three ASM-CM seeds, with zero
+  false positives, full decision coverage, and measured per-event CUDA cost.
 
 ## Administrative boundary
 
