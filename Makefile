@@ -49,7 +49,7 @@ benchmark-gate2-multiseed-independent:
 		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
 		--device "$${ASM_DEVICE:-cuda}" \
 		--asm-inference-policy "$${ASM_INFERENCE_POLICY:-security-relevant}" \
-		--output var/benchmark/gate2-independent-multiseed.json
+		--output "$${AGB_BENCHMARK_OUTPUT:-var/benchmark/gate2-independent-multiseed.json}"
 
 capture-independent-events:
 	PYTHONPATH=python:scripts python3 scripts/run_live_bpf_observer.py \

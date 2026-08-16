@@ -14,7 +14,7 @@ import os
 import sys
 import tempfile
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -23,11 +23,12 @@ PERSISTENCE_RELATION_KEY = 3
 ADMIN_RELATION_KEY = 4
 VALUE_OFFSET = 34
 VALUE_CAPACITY = 64
+MAX_CAUSAL_TOKEN_HISTORY = VALUE_CAPACITY * 2
 FILLER_OFFSET = 98
 FILLER_COUNT = 158
 QUERY_TOKEN = 1
 MINIMUM_MQAR_SEQUENCE = 40
-SNAPSHOT_VERSION = 3
+SNAPSHOT_VERSION = 4
 INFERENCE_POLICIES = {"security-relevant", "all-events"}
 
 
@@ -49,11 +50,8 @@ class _Namespace:
     last_sequence: int = 0
     inference_state: Any = None
     next_value: int = VALUE_OFFSET
-    evidence_by_value: dict[tuple[int, int], str] | None = None
-
-    def __post_init__(self) -> None:
-        if self.evidence_by_value is None:
-            self.evidence_by_value = {}
+    evidence_by_value: dict[tuple[int, int], str] = field(default_factory=dict)
+    token_history: list[int] = field(default_factory=list)
 
 
 class AsmCmEngine:
@@ -141,7 +139,33 @@ class AsmCmEngine:
                 )
         return state
 
-    def _predict(self, state: Any, relation_key: int) -> tuple[int, float]:
+    @staticmethod
+    def _remember_tokens(state: _Namespace, tokens: list[int]) -> None:
+        state.token_history.extend(tokens)
+        overflow = len(state.token_history) - MAX_CAUSAL_TOKEN_HISTORY
+        if overflow > 0:
+            del state.token_history[:overflow]
+
+    def _predict_batched(
+        self, token_history: list[int], relation_key: int
+    ) -> tuple[int, float]:
+        padding_count = max(0, MINIMUM_MQAR_SEQUENCE - 2 - len(token_history))
+        padding = [
+            FILLER_OFFSET + ((position * 37 + relation_key * 11) % FILLER_COUNT)
+            for position in range(padding_count)
+        ]
+        tokens = [*token_history, *padding, QUERY_TOKEN, relation_key]
+        with self.torch.inference_mode(), self._precision():
+            output = self.model(
+                self.torch.tensor([tokens], device=self.device),
+                collect_diagnostics=False,
+            )
+            logits = output["logits"][:, -1]
+        probabilities = self.torch.softmax(logits.float(), dim=-1)
+        confidence, predicted = probabilities.max(dim=-1)
+        return int(predicted.item()), float(confidence.item())
+
+    def _predict_streaming(self, state: Any, relation_key: int) -> tuple[int, float]:
         working = copy.deepcopy(state if state is not None else self._initial_state())
         padding_count = max(0, MINIMUM_MQAR_SEQUENCE - 2 - working.tokens_seen)
         padding = [
@@ -207,26 +231,40 @@ class AsmCmEngine:
             reset = operation == "identity.change" and "trusted-reset" in event.get("labels", [])
             trusted_network = operation == "network.connect" and "trusted-network" in labels
             if trigger_relation is not None:
-                model_inference_performed = True
                 value = state.next_value
                 state.next_value = VALUE_OFFSET + ((value - VALUE_OFFSET + 1) % VALUE_CAPACITY)
-                state.evidence_by_value[(trigger_relation, value)] = event["event_id"]  # type: ignore[index]
-                state.inference_state = self._feed(
-                    state.inference_state, [trigger_relation, value]
-                )
+                state.evidence_by_value[(trigger_relation, value)] = event["event_id"]
+                if self.inference_policy == "security-relevant":
+                    self._remember_tokens(state, [trigger_relation, value])
+                else:
+                    model_inference_performed = True
+                    state.inference_state = self._feed(
+                        state.inference_state, [trigger_relation, value]
+                    )
             elif reset or trusted_network:
-                model_inference_performed = True
                 safe_value = state.next_value
                 state.next_value = VALUE_OFFSET + (
                     (safe_value - VALUE_OFFSET + 1) % VALUE_CAPACITY
                 )
-                state.inference_state = self._feed(
-                    state.inference_state, [NETWORK_RELATION_KEY, safe_value]
-                )
+                state.evidence_by_value.pop((NETWORK_RELATION_KEY, safe_value), None)
+                if self.inference_policy == "security-relevant":
+                    self._remember_tokens(state, [NETWORK_RELATION_KEY, safe_value])
+                else:
+                    model_inference_performed = True
+                    state.inference_state = self._feed(
+                        state.inference_state, [NETWORK_RELATION_KEY, safe_value]
+                    )
             elif query_relation is not None:
                 model_inference_performed = True
-                predicted, confidence = self._predict(state.inference_state, query_relation)
-                selected = state.evidence_by_value.get((query_relation, predicted))  # type: ignore[union-attr]
+                if self.inference_policy == "security-relevant":
+                    predicted, confidence = self._predict_batched(
+                        state.token_history, query_relation
+                    )
+                else:
+                    predicted, confidence = self._predict_streaming(
+                        state.inference_state, query_relation
+                    )
+                selected = state.evidence_by_value.get((query_relation, predicted))
             elif self.inference_policy == "all-events":
                 model_inference_performed = True
                 state.inference_state = self._feed(
@@ -309,6 +347,7 @@ class AsmCmEngine:
                     "last_sequence": state.last_sequence,
                     "next_value": state.next_value,
                     "evidence_by_value": state.evidence_by_value,
+                    "token_history": state.token_history,
                     "inference_state": self._serialize_inference(state.inference_state),
                 }
                 for namespace_id, state in self.namespaces.items()
@@ -346,6 +385,7 @@ class AsmCmEngine:
                 last_sequence=value["last_sequence"],
                 next_value=value["next_value"],
                 evidence_by_value={tuple(key): item for key, item in value["evidence_by_value"].items()},
+                token_history=list(value["token_history"]),
                 inference_state=self._deserialize_inference(value["inference_state"]),
             )
             for namespace_id, value in payload["namespaces"].items()

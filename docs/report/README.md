@@ -18,6 +18,10 @@ remains authoritative in `ROADMAP.md`.
 - report 76: independent-telemetry contract and frozen-split tooling.
 - report 77: external benign telemetry across three ASM-CM seeds, with zero
   false positives, full decision coverage, and measured per-event CUDA cost.
+- report 78: protected three-family multi-seed evidence that satisfies the
+  frozen Gate 2 promotion criterion, with explicit controlled-lab limitations.
+- report 79: snapshot-v4 vectorized query optimization, CPU equivalence, and
+  the outstanding CUDA remeasurement requirement.
 
 ## Administrative boundary
 
@@ -35,9 +39,9 @@ remains authoritative in `ROADMAP.md`.
 - Gate 1 and Gate 4 contain laboratory prototypes only.
 - Reports marked “proof complete” establish only their narrowly stated test;
   they do not promote an entire Gate or establish production readiness.
-- Gate 2 has deterministic and real ASM-CM integration prototypes. Security-
-  specific multi-seed efficacy remains unvalidated. Gate 3 policy evaluation
-  remains unimplemented.
+- Gate 2 is promoted as a controlled-laboratory research prototype. This does
+  not establish unknown-attack generalization, production latency, or a safe
+  enforcement policy. Gate 3 policy evaluation remains unimplemented.
 
 New work should update this index when it changes the current interpretation;
 small chronological reports may still be retained for reproducibility.

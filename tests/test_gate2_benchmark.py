@@ -158,18 +158,18 @@ class Gate2BenchmarkTests(unittest.TestCase):
         network = {**ordinary, "event_id": "event:network", "sequence": 2}
         network["operation"] = "network.connect"
         network_decision = engine.update(network)
-        self.assertTrue(network_decision["model_inference_performed"])
-        self.assertEqual(len(calls), 1)
+        self.assertFalse(network_decision["model_inference_performed"])
+        self.assertEqual(calls, [])
 
         persistence = {**ordinary, "event_id": "event:persistence", "sequence": 3}
         persistence["labels"] = ["persistence-origin"]
         persistence_decision = engine.update(persistence)
-        self.assertTrue(persistence_decision["model_inference_performed"])
-        self.assertEqual(calls[-1], [3, 35])
+        self.assertFalse(persistence_decision["model_inference_performed"])
+        self.assertEqual(engine.namespaces[ordinary["namespace_id"]].token_history, [2, 34, 3, 35])
 
         query = {**ordinary, "event_id": "event:persistence-query", "sequence": 4}
         query["labels"] = ["persistence-control"]
-        engine._predict = lambda state, relation: (35, 0.99)
+        engine._predict_batched = lambda history, relation: (35, 0.99)
         query_decision = engine.update(query)
         self.assertEqual(query_decision["effect"], "DENY")
         self.assertEqual(

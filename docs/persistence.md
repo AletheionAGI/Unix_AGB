@@ -163,6 +163,15 @@ only for controlled comparison. Snapshot restore rejects a different inference
 policy or snapshot version, preventing state created under another tokenization
 schedule from being silently reused.
 
+Snapshot version 4 stores a bounded causal token history for the selective
+policy. Origin events update that compact history without executing the neural
+model. At a protected query, the adapter reconstructs the same MQAR sequence and
+evaluates it with one vectorized model forward pass, instead of cloning streaming
+state and issuing roughly 40 sequential `decode_step` calls. The history retains
+at most the last 64 relation/value pairs, matching the adapter's addressable value
+capacity. This optimization is outside the deterministic enforcement hot path;
+it does not turn model output into authorization or widen privileges.
+
 Consequently, marking a `file.open` trajectory benign never grants egress
 permission. A strong exfiltration finding requires a causal chain from process
 identity through file read and outbound send, including destination and policy

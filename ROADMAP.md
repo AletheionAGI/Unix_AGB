@@ -13,7 +13,7 @@ production observer or system-wide enforcement service exists yet.
 |---:|---|---|
 | 0 | Architecture, licensing, contracts, threat model, benchmark plan | Complete |
 | 1 | Ubuntu observer and canonical event pipeline | Prototype |
-| 2 | ASM-CM state runtime and persistence | Real integration prototype |
+| 2 | ASM-CM state runtime and persistence | Promoted controlled-lab prototype |
 | 3 | Explicit policy engine and dry-run decisions | Not started |
 | 4 | Narrow deterministic enforcement pilot | Laboratory prototype |
 | 5 | AI-agent capability broker | Not started |
@@ -94,10 +94,11 @@ stateful proxy, and a real promoted-checkpoint ASM-CM adapter behind the
 Unix-socket boundary. Both have checksummed snapshots and participate in the
 frozen A–D comparison harness. The real seed-1 integration validates checkpoint
 loading, evidence selection, restart, and corrupt-state rejection, not general
-security efficacy. Three promoted checkpoints now pass the frozen adversarial
-v2 corpus without seed variance, but tie the strong deterministic sequence
-baseline. Independent natural telemetry, replay from the canonical store, and
-production resource accounting remain outstanding.
+security efficacy. Three promoted checkpoints pass the frozen adversarial v2
+corpus without seed variance. The later protected three-family corpus satisfies
+the controlled Gate 2 promotion criterion; independent natural adversarial
+telemetry, replay from the canonical store, and production resource accounting
+remain outstanding.
 
 The independent-telemetry contract and leakage-resistant split freezer are now
 implemented. Collection and external labeling remain outstanding; no synthetic
@@ -117,8 +118,18 @@ families from real BPF-observed syscalls: credential egress context, controlled
 persistence origin, and controlled administrative origin. Every terminal action
 is confined to laboratory files or loopback, exact-path semantic labels are
 policy-derived, and class labels come only from the orchestrator's handshaken
-ground truth. A fresh capture and three-seed report are still required before
-this implementation can be cited as Gate 2 evidence.
+ground truth. The frozen capture contains 180 trajectories; its 141-trajectory
+test split produced 100% accuracy, recall, and coverage on all three ASM-CM seeds
+versus 67,38% sequence-baseline accuracy, promoting Gate 2 under the frozen
+criterion. This is controlled-laboratory evidence, not unknown-attack or
+production-enforcement validation. See report 78.
+
+The post-promotion snapshot-v4 adapter defers neural work until protected
+queries and evaluates the preserved MQAR sequence in one vectorized forward
+pass. CPU equivalence checks across relation keys retained identical predictions
+and confidence while reducing isolated query latency by 13–25×. A fresh CUDA
+multi-seed benchmark is required to record production-relevant latency and to
+confirm the promoted confusion matrix under the optimized implementation.
 
 - create isolated state per security namespace;
 - implement event-to-state updates and deterministic revisions;
