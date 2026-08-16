@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--socket", default="var/agb-policy.sock")
     args = parser.parse_args()
     request = {
+        "type": "health",
         "namespace_id": "health:probe",
         "resource": "health://broker",
         "policy_revision": "policy:health-probe",
@@ -27,7 +28,7 @@ def main() -> None:
             response = json.loads(client.makefile("rb").readline())
         required = {"schema_version", "effect", "backend", "policy_revision", "fallback"}
         missing = required.difference(response)
-        if missing or response["backend"] != "seccomp-user-notify":
+        if missing or response["backend"] != "seccomp-user-notify" or response.get("reason") != "health-ok":
             raise RuntimeError(f"invalid health response: missing={sorted(missing)}")
         print(json.dumps({"healthy": True, "backend": response["backend"], "effect": response["effect"]}))
     except (OSError, ValueError, RuntimeError) as error:

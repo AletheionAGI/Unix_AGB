@@ -8,6 +8,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Deserialize)]
 struct Request {
+    #[serde(rename = "type", default)]
+    request_type: Option<String>,
     namespace_id: String,
     resource: String,
     policy_revision: String,
@@ -47,6 +49,18 @@ impl Broker {
             }
             _ => return Self::fallback("invalid request"),
         };
+        if request.request_type.as_deref() == Some("health") {
+            return self.record(Response {
+                schema_version: "1.0",
+                effect: "ALLOW".into(),
+                backend: "seccomp-user-notify",
+                applied: false,
+                cache_hit: false,
+                fallback: false,
+                policy_revision: "policy:health-probe".into(),
+                reason: "health-ok".into(),
+            });
+        }
         let key = format!("{}|{}", request.namespace_id, request.resource);
         if let Some(cached) = self.cache.get(&key).cloned() {
             if cached.expires > Instant::now() && cached.policy_revision == request.policy_revision
