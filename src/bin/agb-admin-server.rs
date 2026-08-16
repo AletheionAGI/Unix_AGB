@@ -84,7 +84,7 @@ fn handle(
     {
         requests.pop_front();
     }
-    let operator = peer;
+    let operator = peer.clone();
     let response = if !peer_allowed(credentials) {
         Response {
             ok: false,
