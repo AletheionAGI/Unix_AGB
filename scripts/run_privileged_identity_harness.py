@@ -11,7 +11,6 @@ import json
 import os
 import pwd
 import shutil
-import socket
 import time
 import subprocess
 import tempfile
@@ -51,10 +50,7 @@ def main() -> None:
                     if process.poll() is not None:
                         raise SystemExit("dedicated admin server exited before socket creation")
                     time.sleep(0.02)
-                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-                    client.connect(str(sock))
-                    client.sendall((json.dumps({"token": "lab-token", "operation": "list", "operator": "lab"}) + "\n").encode())
-                    response = json.loads(client.makefile("rb").readline())
+                response = json.loads(subprocess.check_output(["runuser", "-u", name, "--", "python3", str(root / "scripts/admin_request.py"), str(sock), "lab-token"], text=True))
                 if response.get("reason") != "admin-ok":
                     raise SystemExit(f"dedicated admin request rejected: {response}")
                 audit = base / "audit"
