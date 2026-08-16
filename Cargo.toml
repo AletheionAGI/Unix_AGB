@@ -9,6 +9,7 @@ description = "Audit-only Unix-AGB Gate 0 runtime skeleton"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+hmac = "0.12"
 libc = "0.2"
 
 [dev-dependencies]

@@ -1,3 +1,4 @@
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -47,15 +48,21 @@ struct PersistedCache {
 }
 
 fn cache_checksum(key: &str, effect: &str, revision: &str, expires: u64) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(key.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(effect.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(revision.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(expires.to_le_bytes());
-    format!("{:x}", hasher.finalize())
+    let mut payload = Vec::new();
+    payload.extend_from_slice(key.as_bytes());
+    payload.push(0);
+    payload.extend_from_slice(effect.as_bytes());
+    payload.push(0);
+    payload.extend_from_slice(revision.as_bytes());
+    payload.push(0);
+    payload.extend_from_slice(&expires.to_le_bytes());
+    if let Ok(secret) = std::env::var("AGB_CACHE_KEY") {
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts keys");
+        mac.update(&payload);
+        format!("hmac-sha256:{:x}", mac.finalize().into_bytes())
+    } else {
+        format!("sha256:{:x}", Sha256::digest(&payload))
+    }
 }
 
 struct Broker {
