@@ -88,3 +88,7 @@ admin-operator-spoofing:
 
 live-bpf-observer:
 	python3 scripts/run_live_bpf_observer.py
+
+live-bpf-broker-pipeline:
+	cargo build --quiet --bin agb-policy-broker
+	python3 scripts/run_live_bpf_broker_pipeline.py
