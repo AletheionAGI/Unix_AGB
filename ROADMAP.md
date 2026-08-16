@@ -107,6 +107,8 @@ fixture may satisfy that promotion requirement.
 - encode non-negotiable static invariants;
 - map state and authorized canonical evidence into risk bands;
 - implement `ABSTAIN` and explicit reason codes;
+- persist one compact, deduplicated record per exact positive process identity;
+- retain detailed negative decisions and their minimum reproducible causal evidence;
 - compile versioned, expiring decisions into a local policy cache;
 - support validation, dry-run, audit traces, rollback, and operator review;
 - prohibit state-derived privilege expansion.
@@ -118,6 +120,8 @@ fixture may satisfy that promotion requirement.
 - keep neural inference and network calls outside the hot path;
 - measure p50/p95/p99 enforcement latency and cache behavior;
 - verify base-policy behavior during daemon, model, GPU, and store failures;
+- expose read-only positive/negative counters for a later local GUI;
+- group and rate-limit desktop notifications for new negative decisions;
 - exercise rollback and recovery boot.
 
 Promotion requires acceptable false positives, bounded resources, reliable

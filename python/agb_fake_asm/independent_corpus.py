@@ -17,6 +17,8 @@ class IndependentCorpusError(ValueError):
 
 
 def load_independent_corpus(path: Path, *, split: str | None = None) -> list[dict[str, Any]]:
+    if not path.is_file():
+        raise IndependentCorpusError(f"input does not exist: {path}")
     trajectories: list[dict[str, Any]] = []
     event_ids: set[str] = set()
     namespace_split: dict[str, str] = {}

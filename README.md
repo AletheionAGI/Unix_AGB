@@ -128,17 +128,56 @@ matching `ASM_CM_SEED{1,2,3}_SHA256` variables in addition to the ASM source
 root and revision. The report separates ingest/query latency and records peak
 CUDA allocated/reserved bytes.
 
-External telemetry must be frozen before evaluation:
+Collect normalized BPF events and build unlabeled candidates first:
 
 ```bash
-AGB_INDEPENDENT_CORPUS=/path/to/reviewed-trajectories.jsonl \
-make freeze-independent-corpus
+AGB_BPFTRACE_COMMAND="sudo bpftrace" make capture-independent-events
+make build-independent-candidates
+```
+
+Candidate construction divides long process histories into contiguous windows
+of at most 256 events (`AGB_MAX_TRAJECTORY_EVENTS`). Derived sequences restart
+at one, while `provenance.source_sequence` preserves the canonical source
+position. Every window from the same exact process identity is assigned to the
+same split, preventing cross-split namespace leakage.
+The builder fingerprints the exact collector and normalizer sources in addition
+to recording the Git commit, so uncommitted collector changes cannot masquerade
+as the clean commit. `AGB_COLLECTOR_REVISION` remains available only for an
+externally attested collector revision.
+
+The `sudo` prefix is only needed when the current user lacks tracingfs/BPF
+privileges; delegated capabilities can be used instead. The command fails without
+replacing an earlier capture if permission is denied or no events are seen. Review
+By default the observer captures the complete host. Set `AGB_CAPTURE_UID` to a
+numeric UID only when an authorized collection must be deliberately restricted.
+The runner translates the system-wide `-1` sentinel to a non-option positional
+value before invoking bpftrace.
+`var/telemetry/trajectory-candidates.jsonl` independently, then write one JSONL
+decision per candidate to `var/telemetry/trajectory-reviews.jsonl`:
+
+```json
+{"trajectory_id":"candidate:...","label":"benign","label_source":"review:case-123","family":"developer-build"}
+```
+
+Replace `candidate:...` with each exact candidate ID. The preassigned split
+cannot be changed. Exporting fails if any candidate is missing a review or a
+review names an unknown candidate. Then run:
+
+For large captures, `make build-review-queue` streams the candidate file and
+creates a compact `review-queue.jsonl` plus a review template. Every
+`REVIEW_REQUIRED` value must be independently replaced; those placeholders are
+deliberately rejected by the exporter.
+
+```bash
+make export-reviewed-corpus
+AGB_INDEPENDENT_CORPUS="$PWD/var/telemetry/reviewed-trajectories.jsonl" make freeze-independent-corpus
 ```
 
 The validator rejects synthetic provenance, sequence gaps, duplicate event IDs,
 mixed namespaces within a trajectory, and namespace overlap between calibration
 and test. Unix-AGB ships the contract and tooling, not a fabricated “real”
-dataset.
+dataset. Paths under `var/telemetry` may contain sensitive process and resource
+metadata and are intentionally not committed.
 
 ## Reproducible causal proof
 

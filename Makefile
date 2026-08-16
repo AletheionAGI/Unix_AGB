@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed capture-independent-events build-independent-candidates build-review-queue export-reviewed-corpus freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -36,6 +36,33 @@ benchmark-gate2-multiseed:
 		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
 		--device "$${ASM_DEVICE:-cuda}" \
 		--output var/benchmark/gate2-adversarial-v2-multiseed.json
+
+capture-independent-events:
+	PYTHONPATH=python:scripts python3 scripts/run_live_bpf_observer.py \
+		--duration "$${AGB_CAPTURE_DURATION:-60}" \
+		--bpftrace-command "$${AGB_BPFTRACE_COMMAND:-bpftrace}" \
+		--target-uid "$${AGB_CAPTURE_UID:--1}" \
+		--output-events "$${AGB_CAPTURE_EVENTS:-var/telemetry/bpf-events.jsonl}"
+
+build-independent-candidates:
+	PYTHONPATH=python:scripts python3 scripts/build_trajectory_candidates.py \
+		--input "$${AGB_CAPTURE_EVENTS:-var/telemetry/bpf-events.jsonl}" \
+		--output "$${AGB_CANDIDATES:-var/telemetry/trajectory-candidates.jsonl}" \
+		--collector-revision "$${AGB_COLLECTOR_REVISION:-$$(python3 scripts/fingerprint_collector.py)}" \
+		--min-events "$${AGB_MIN_TRAJECTORY_EVENTS:-1}" \
+		--max-events "$${AGB_MAX_TRAJECTORY_EVENTS:-256}"
+
+build-review-queue:
+	PYTHONPATH=python:scripts python3 scripts/build_review_queue.py \
+		--input "$${AGB_CANDIDATES:-var/telemetry/trajectory-candidates.jsonl}" \
+		--output "$${AGB_REVIEW_QUEUE:-var/telemetry/review-queue.jsonl}" \
+		--review-template "$${AGB_REVIEWS:-var/telemetry/trajectory-reviews.jsonl}"
+
+export-reviewed-corpus:
+	PYTHONPATH=python:scripts python3 scripts/export_reviewed_corpus.py \
+		--candidates "$${AGB_CANDIDATES:-var/telemetry/trajectory-candidates.jsonl}" \
+		--reviews "$${AGB_REVIEWS:-var/telemetry/trajectory-reviews.jsonl}" \
+		--output "$${AGB_INDEPENDENT_CORPUS:-var/telemetry/reviewed-trajectories.jsonl}"
 
 freeze-independent-corpus:
 	PYTHONPATH=python:scripts python3 scripts/freeze_independent_corpus.py \

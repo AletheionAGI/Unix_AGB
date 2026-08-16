@@ -3,17 +3,19 @@
 // Requires: bpftrace, tracefs, and the privileges required by the host.
 
 tracepoint:syscalls:sys_enter_execve
+    /$1 == 4294967295 || uid == $1/
 {
-  printf("AGB_BPF|process.exec|pid=%d|exe=%s\n", pid, str(args->filename));
+  printf("AGB_BPF|process.exec|pid=%d|uid=%d|gid=%d|comm=%s|exe=%s\n", pid, uid, gid, comm, str(args->filename));
 }
 
 tracepoint:syscalls:sys_enter_openat
+    /$1 == 4294967295 || uid == $1/
 {
-  printf("AGB_BPF|file.open|pid=%d|path=%s\n", pid, str(args->filename));
+  printf("AGB_BPF|file.open|pid=%d|uid=%d|gid=%d|comm=%s|path=%s\n", pid, uid, gid, comm, str(args->filename));
 }
 
 tracepoint:syscalls:sys_enter_connect
+    /$1 == 4294967295 || uid == $1/
 {
-  printf("AGB_BPF|network.connect|pid=%d|fd=%d\n", pid, args->fd);
+  printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d\n", pid, uid, gid, comm, args->fd);
 }
-

@@ -13,17 +13,33 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def subject_for(pid: int) -> dict[str, object]:
+def subject_for(
+    pid: int,
+    *,
+    uid: int | None = None,
+    gid: int | None = None,
+    fallback_exe: str | None = None,
+) -> dict[str, object]:
     stat = Path(f"/proc/{pid}/stat").read_text().split()
+    status = Path(f"/proc/{pid}/status").read_text().splitlines()
+    status_fields = {}
+    for line in status:
+        parts = line.split(maxsplit=1)
+        if len(parts) == 2:
+            status_fields[parts[0].rstrip(":")] = parts[1].split()[0]
     ticks = int(stat[21])
     hz = os.sysconf("SC_CLK_TCK")
+    try:
+        executable = os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        executable = fallback_exe or "<unavailable>"
     return {
         "pid": pid,
-        "uid": os.getuid(),
-        "gid": os.getgid(),
+        "uid": uid if uid is not None else int(status_fields["Uid"]),
+        "gid": gid if gid is not None else int(status_fields["Gid"]),
         "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
         "start_time_ns": ticks * 1_000_000_000 // hz,
-        "exe": os.readlink(f"/proc/{pid}/exe"),
+        "exe": executable,
     }
 
 
@@ -34,7 +50,12 @@ def normalize(line: str, sequences: dict[str, int]) -> dict[str, object] | None:
     operation = fields[1]
     attributes = dict(item.split("=", 1) for item in fields[2:] if "=" in item)
     pid = int(attributes["pid"])
-    subject = subject_for(pid)
+    subject = subject_for(
+        pid,
+        uid=int(attributes["uid"]) if "uid" in attributes else None,
+        gid=int(attributes["gid"]) if "gid" in attributes else None,
+        fallback_exe=attributes.get("exe") or attributes.get("comm"),
+    )
     namespace = f"process:{subject['boot_id']}:{pid}:{subject['start_time_ns']}"
     sequence = sequences.get(namespace, 0) + 1
     sequences[namespace] = sequence
