@@ -11,5 +11,5 @@ Data: 2026-08-15
 
 ## Limitações
 
-O checksum detecta corrupção acidental, mas não autentica contra um atacante.
-Integridade criptográfica assinada é uma etapa posterior.
+O checksum desta etapa foi promovido para SHA-256 na etapa seguinte; esta
+implementação ainda não fornece assinatura de origem ou rotação de chaves.

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -47,10 +47,15 @@ struct PersistedCache {
 }
 
 fn cache_checksum(key: &str, effect: &str, revision: &str, expires: u64) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    (key, effect, revision, expires).hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(effect.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(revision.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(expires.to_le_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 struct Broker {
