@@ -35,10 +35,19 @@ struct Cached {
     expires: Instant,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct PersistedCache {
+    key: String,
+    effect: String,
+    policy_revision: String,
+    expires_epoch: u64,
+}
+
 struct Broker {
     cache: HashMap<String, Cached>,
     ttl: Duration,
     audit_path: PathBuf,
+    cache_path: PathBuf,
 }
 
 impl Broker {
@@ -83,13 +92,34 @@ impl Broker {
             _ => return Self::fallback("unsupported requested effect"),
         };
         self.cache.insert(
-            key,
+            key.clone(),
             Cached {
                 effect: effect.into(),
                 policy_revision: request.policy_revision.clone(),
                 expires: Instant::now() + self.ttl,
             },
         );
+        let expires_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            + self.ttl.as_secs();
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.cache_path)
+        {
+            let _ = serde_json::to_writer(
+                &mut file,
+                &PersistedCache {
+                    key,
+                    effect: effect.into(),
+                    policy_revision: request.policy_revision.clone(),
+                    expires_epoch,
+                },
+            );
+            let _ = file.write_all(b"\n");
+        }
         self.record(Response {
             schema_version: "1.0",
             effect: effect.into(),
@@ -150,6 +180,9 @@ fn main() -> Result<(), String> {
     let audit = std::env::args()
         .nth(2)
         .unwrap_or_else(|| "var/enforcement.jsonl".into());
+    let cache_path = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "var/policy-cache.jsonl".into());
     let socket_path = PathBuf::from(&socket);
     if socket_path.exists() {
         std::fs::remove_file(&socket_path).map_err(|e| e.to_string())?;
@@ -158,10 +191,33 @@ fn main() -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let listener = UnixListener::bind(&socket_path).map_err(|e| e.to_string())?;
+    let mut cache = HashMap::new();
+    if let Ok(file) = std::fs::File::open(&cache_path) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        for line in BufReader::new(file).lines().map_while(Result::ok) {
+            if let Ok(entry) = serde_json::from_str::<PersistedCache>(&line) {
+                if entry.expires_epoch > now {
+                    cache.insert(
+                        entry.key,
+                        Cached {
+                            effect: entry.effect,
+                            policy_revision: entry.policy_revision,
+                            expires: Instant::now()
+                                + Duration::from_secs(entry.expires_epoch - now),
+                        },
+                    );
+                }
+            }
+        }
+    }
     let mut broker = Broker {
-        cache: HashMap::new(),
+        cache,
         ttl: Duration::from_secs(2),
         audit_path: PathBuf::from(audit),
+        cache_path: PathBuf::from(cache_path),
     };
     for stream in listener.incoming() {
         match stream {
