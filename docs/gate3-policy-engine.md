@@ -52,9 +52,36 @@ secret must come from a root-readable credential file or kernel-backed secret
 facility rather than a shell variable. The environment variable exists only for
 this dry-run prototype.
 
+## Full ASM-CM pipeline benchmark
+
+The end-to-end benchmark consumes the frozen, real-BPF protected corpus rather
+than a hand-written state fixture. For every event it updates the real ASM-CM
+checkpoint, translates the result into `SecurityStateSummary`, sends the event
+and state to the Rust Gate 3 process, waits for durable audit and authenticated
+cache persistence, and verifies that every response remains dry-run. The
+captured event policy revision must match the configured Gate 3 revision
+exactly; the runner never rewrites frozen telemetry to make it pass.
+
+```sh
+AGB_GATE3_CORPUS="$PWD/var/telemetry/protected-lab/corpus.jsonl" \
+ASM_CM_CHECKPOINT=../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_1/candidate/checkpoint_final.pt \
+ASM_CM_CHECKPOINT_SHA256=96293688518fc0a2e83525af6ad28d16f39677980432762328bf4ad8aac654de \
+ASM_SOURCE_ROOT=../gitlab/ASM/src \
+ASM_SOURCE_REVISION=4c8eddf2f07d9aec800769323d7e1effbd64815a \
+ASM_DEVICE=cuda \
+AGB_GATE3_POLICY_REVISION=policy:bpf-observer-v1 \
+AGB_GATE3_CACHE_KEY="replace-with-a-local-test-secret" \
+make benchmark-gate3-asm-pipeline
+```
+
+The JSON report separates ASM-CM, durable Gate 3, and end-to-end latency and
+records terminal confusion, audit completeness, cache contents, checkpoint and
+corpus fingerprints. `ALLOW` remains an audit result only. The runner rejects a
+cache containing anything other than `DENY`.
+
 ## Non-claims
 
-This implementation validates policy semantics, cache compilation, restart,
+This implementation validates policy semantics, real ASM-CM state handoff, cache compilation, restart,
 corruption rejection, expiry, rollback boundaries, and namespace isolation. It
 does not connect the cache to seccomp, BPF-LSM, AppArmor, or another enforcement
 backend. That connection belongs to Gate 4 after cache lookup latency and failure

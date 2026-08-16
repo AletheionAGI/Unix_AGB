@@ -67,7 +67,7 @@ impl SecurityEvent {
         if self.schema_version != SCHEMA_VERSION {
             return Err("unsupported schema_version".into());
         }
-        if !valid_prefixed_id(&self.event_id, "evt:", 128) {
+        if !valid_prefixed_id_with_segments(&self.event_id, "evt:", 128) {
             return Err("invalid event_id".into());
         }
         if self.sequence == 0 {
@@ -143,6 +143,18 @@ fn valid_prefixed_id(value: &str, prefix: &str, max_len: usize) -> bool {
                 && suffix
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+        })
+}
+
+fn valid_prefixed_id_with_segments(value: &str, prefix: &str, max_len: usize) -> bool {
+    value.len() <= max_len
+        && value.strip_prefix(prefix).is_some_and(|suffix| {
+            !suffix.is_empty()
+                && !suffix.starts_with(':')
+                && !suffix.ends_with(':')
+                && suffix.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || b"._-:".contains(&byte)
+                })
         })
 }
 
@@ -320,5 +332,14 @@ mod tests {
         let mut event = sample_event("evt:valid-2", 1, 10, 20);
         event.labels = vec!["duplicate".into(), "duplicate".into()];
         assert_eq!(event.validate().unwrap_err(), "invalid labels");
+    }
+
+    #[test]
+    fn bpf_segmented_event_identifier_is_valid() {
+        let mut event = sample_event("evt:original", 1, 42, 100);
+        event.event_id = "evt:bpf:4242:7:123456".into();
+        assert!(event.validate().is_ok());
+        event.event_id = "evt::bpf".into();
+        assert!(event.validate().is_err());
     }
 }

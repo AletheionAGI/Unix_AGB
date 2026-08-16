@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -119,6 +119,22 @@ gate3-dry-run:
 benchmark-gate3-cache:
 	cargo run --quiet --release --bin agb-gate3-cache-benchmark -- \
 		"$${AGB_GATE3_BENCHMARK_ITERATIONS:-100000}"
+
+benchmark-gate3-asm-pipeline:
+	cargo build --quiet --bin agb-policy-dry-run
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/run_gate3_asm_pipeline.py \
+		--corpus "$${AGB_GATE3_CORPUS:?set AGB_GATE3_CORPUS}" \
+		--checkpoint "$${ASM_CM_CHECKPOINT:?set ASM_CM_CHECKPOINT}" \
+		--checkpoint-sha256 "$${ASM_CM_CHECKPOINT_SHA256:?set ASM_CM_CHECKPOINT_SHA256}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--policy-revision "$${AGB_GATE3_POLICY_REVISION:?set AGB_GATE3_POLICY_REVISION}" \
+		--minimum-confidence "$${AGB_GATE3_MIN_CONFIDENCE:-0.8}" \
+		--ttl-seconds "$${AGB_GATE3_TTL_SECONDS:-2}" \
+		--audit "$${AGB_GATE3_AUDIT:-var/gate3-asm-decisions.jsonl}" \
+		--cache "$${AGB_GATE3_CACHE:-var/gate3-asm-cache.json}" \
+		--output "$${AGB_GATE3_BENCHMARK_OUTPUT:-var/benchmark/gate3-asm-pipeline.json}"
 
 causal-proof:
 	cargo run --quiet --bin agb-causal-proof

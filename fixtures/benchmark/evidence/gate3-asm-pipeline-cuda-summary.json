@@ -1,0 +1,45 @@
+{
+  "benchmark": "unix-agb-gate3-asm-cm-pipeline-v1",
+  "checkpoint_sha256": "96293688518fc0a2e83525af6ad28d16f39677980432762328bf4ad8aac654de",
+  "dataset_sha256": "ae165d68603180df880de933ed8fb6a84137aac14cc1e8bdab65de259dd53740",
+  "decision_effects": {
+    "ALLOW": 916,
+    "DENY": 71
+  },
+  "device": "cuda",
+  "enforcement_applied": false,
+  "event_count": 987,
+  "latency_us": {
+    "asm_cm": {
+      "p50": 34.091,
+      "p95": 17917.692,
+      "p99": 19205.116
+    },
+    "end_to_end": {
+      "p50": 4662.602,
+      "p95": 22963.2,
+      "p99": 25137.842
+    },
+    "gate3_audit_cache": {
+      "p50": 4345.741,
+      "p95": 6515.669,
+      "p99": 7931.918
+    }
+  },
+  "persistence_proofs": {
+    "audit_record_count": 987,
+    "cache_contains_only_deny": true,
+    "cache_entry_count": 71,
+    "every_response_enforcement_applied_false": true
+  },
+  "report_sha256": "fca86339cfbb13c6327132318a197ed1eb0726f46de92c77e9b9236d8e6f9ee7",
+  "source_revision": "4c8eddf2f07d9aec800769323d7e1effbd64815a",
+  "terminal_confusion": {
+    "abstain": 0,
+    "fn": 0,
+    "fp": 0,
+    "tn": 70,
+    "tp": 71
+  },
+  "trajectory_count": 141
+}

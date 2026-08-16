@@ -7,7 +7,7 @@
   "required": ["schema_version", "event_id", "sequence", "occurred_at", "monotonic_ns", "host_id", "namespace_id", "subject", "operation", "resource", "result", "policy_revision", "labels", "provenance"],
   "properties": {
     "schema_version": { "const": "1.0" },
-    "event_id": { "type": "string", "pattern": "^evt:[A-Za-z0-9._-]+$", "maxLength": 128 },
+    "event_id": { "type": "string", "pattern": "^evt:[A-Za-z0-9._-]+(?::[A-Za-z0-9._-]+)*$", "maxLength": 128 },
     "sequence": { "type": "integer", "minimum": 1 },
     "occurred_at": { "type": "string", "format": "date-time" },
     "monotonic_ns": { "type": "integer", "minimum": 0 },

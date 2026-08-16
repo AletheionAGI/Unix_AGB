@@ -14,7 +14,7 @@ production observer or system-wide enforcement service exists yet.
 | 0 | Architecture, licensing, contracts, threat model, benchmark plan | Complete |
 | 1 | Ubuntu observer and canonical event pipeline | Prototype |
 | 2 | ASM-CM state runtime and persistence | Promoted controlled-lab prototype |
-| 3 | Explicit policy engine and dry-run decisions | Deny-only dry-run prototype |
+| 3 | Explicit policy engine and dry-run decisions | Real ASM-CM deny-only dry-run pipeline |
 | 4 | Narrow deterministic enforcement pilot | Laboratory prototype |
 | 5 | AI-agent capability broker | Not started |
 | 6 | Ubuntu-derived developer preview | Not started |
@@ -152,6 +152,15 @@ isolation are covered by Rust tests. Two release microbenchmark runs measured
 isolated in-process cache hits at 65 ns p50, 66–113 ns p95, and 83–114 ns p99
 over 100.000 iterations each; this excludes IPC and enforcement overhead. See
 report 80.
+
+The full dry-run path now consumes the frozen protected BPF corpus through the
+real ASM-CM adapter and a validated `SecurityStateSummary`. It persists one
+audit decision per event and rejects any cache snapshot containing a non-`DENY`
+entry. The RTX 4090 run produced TN=70, TP=71, FP=0, FN=0 on the test split,
+with end-to-end latency of 4,66 ms p50, 22,96 ms p95, and 25,14 ms p99. Durable
+audit/cache persistence alone cost 4,35 ms p50, making it the next common-path
+optimization target. Every response still reports `enforcement_applied: false`.
+See report 81.
 
 - encode non-negotiable static invariants;
 - map state and authorized canonical evidence into risk bands;
