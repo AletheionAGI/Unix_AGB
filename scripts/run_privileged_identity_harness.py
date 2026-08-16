@@ -70,7 +70,7 @@ def main() -> None:
                 records = [json.loads(line) for line in audit.read_text().splitlines() if line.strip()]
                 if len(records) < 2 or not any(f"uid:{account.pw_uid}:gid:{account.pw_gid}" in item.get("operator", "") for item in records) or not any(item.get("reason") == "peer-not-allowlisted" for item in records):
                     raise SystemExit("audit log does not contain both dedicated and outsider decisions")
-                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "response": response, "outsider_uid": outsider_account.pw_uid, "outsider_gid": outsider_account.pw_gid, "outsider_response": outsider_response, "audit_exists": True, "audit_records": len(records), "last_audit": records[-1]}, indent=2))
+                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "response": response, "outsider_uid": outsider_account.pw_uid, "outsider_gid": outsider_account.pw_gid, "outsider_response": outsider_response, "audit_exists": True, "audit_records": len(records), "audit_events": records}, indent=2))
             finally:
                 process.terminate()
                 process.wait(timeout=5)
