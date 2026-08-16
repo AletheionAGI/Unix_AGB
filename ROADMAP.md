@@ -75,7 +75,7 @@ Still outstanding:
 - production observer and non-cooperative system-wide enforcement;
 - shared-group and UID-only variants, including audit persistence and admin
   server restart, were executed successfully in the privileged harness (see
-  `docs/report/51`);
+  `docs/report/53`);
 - Gate 2 state runtime, Gate 3 policy engine, and Gates 5–7 deliverables.
 
 ## Gate 2 — ASM-CM state runtime
