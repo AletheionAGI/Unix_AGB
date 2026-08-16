@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health
+.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart
 
 test: test-python test-rust
 
@@ -40,3 +40,7 @@ supervise-broker:
 
 broker-health:
 	python3 scripts/check_policy_broker_health.py --socket var/agb-policy.sock
+
+broker-restart:
+	cargo build --quiet --bin agb-policy-broker
+	python3 scripts/test_broker_restart.py
