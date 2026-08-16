@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed capture-independent-events build-independent-candidates build-review-queue export-reviewed-corpus freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue export-reviewed-corpus freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -36,6 +36,17 @@ benchmark-gate2-multiseed:
 		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
 		--device "$${ASM_DEVICE:-cuda}" \
 		--output var/benchmark/gate2-adversarial-v2-multiseed.json
+
+benchmark-gate2-multiseed-independent:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/benchmark_gate2_multiseed.py \
+		--independent-dataset "$${AGB_INDEPENDENT_CORPUS:?set AGB_INDEPENDENT_CORPUS}" \
+		--checkpoint "1:$${ASM_CM_SEED1_CHECKPOINT:?set ASM_CM_SEED1_CHECKPOINT}:$${ASM_CM_SEED1_SHA256:?set ASM_CM_SEED1_SHA256}" \
+		--checkpoint "2:$${ASM_CM_SEED2_CHECKPOINT:?set ASM_CM_SEED2_CHECKPOINT}:$${ASM_CM_SEED2_SHA256:?set ASM_CM_SEED2_SHA256}" \
+		--checkpoint "3:$${ASM_CM_SEED3_CHECKPOINT:?set ASM_CM_SEED3_CHECKPOINT}:$${ASM_CM_SEED3_SHA256:?set ASM_CM_SEED3_SHA256}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--output var/benchmark/gate2-independent-multiseed.json
 
 capture-independent-events:
 	PYTHONPATH=python:scripts python3 scripts/run_live_bpf_observer.py \

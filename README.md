@@ -179,6 +179,11 @@ and test. Unix-AGB ships the contract and tooling, not a fabricated “real”
 dataset. Paths under `var/telemetry` may contain sensitive process and resource
 metadata and are intentionally not committed.
 
+After independent review and freezing, `make benchmark-gate2-multiseed-independent`
+runs the three promoted ASM-CM seeds against only the frozen test split. It
+requires the same three checkpoint/source variables as the adversarial multi-seed
+target plus `AGB_INDEPENDENT_CORPUS`.
+
 ## Reproducible causal proof
 
 The first controlled proof uses two isolated processes that perform the same
