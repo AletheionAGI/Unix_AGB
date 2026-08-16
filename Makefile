@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts
+.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity
 
 test: test-python test-rust
 
@@ -64,3 +64,6 @@ uid-gid-matrix:
 
 dedicated-accounts:
 	python3 scripts/test_admin_dedicated_accounts.py
+
+privileged-identity:
+	python3 scripts/run_privileged_identity_harness.py
