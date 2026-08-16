@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -37,10 +38,19 @@ struct Cached {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct PersistedCache {
+    format_version: u32,
     key: String,
     effect: String,
     policy_revision: String,
     expires_epoch: u64,
+    checksum: String,
+}
+
+fn cache_checksum(key: &str, effect: &str, revision: &str, expires: u64) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    (key, effect, revision, expires).hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 struct Broker {
@@ -112,10 +122,12 @@ impl Broker {
             let _ = serde_json::to_writer(
                 &mut file,
                 &PersistedCache {
-                    key,
+                    format_version: 1,
+                    key: key.clone(),
                     effect: effect.into(),
                     policy_revision: request.policy_revision.clone(),
                     expires_epoch,
+                    checksum: cache_checksum(&key, effect, &request.policy_revision, expires_epoch),
                 },
             );
             let _ = file.write_all(b"\n");
@@ -199,7 +211,16 @@ fn main() -> Result<(), String> {
             .as_secs();
         for line in BufReader::new(file).lines().map_while(Result::ok) {
             if let Ok(entry) = serde_json::from_str::<PersistedCache>(&line) {
-                if entry.expires_epoch > now {
+                if entry.format_version == 1
+                    && entry.checksum
+                        == cache_checksum(
+                            &entry.key,
+                            &entry.effect,
+                            &entry.policy_revision,
+                            entry.expires_epoch,
+                        )
+                    && entry.expires_epoch > now
+                {
                     cache.insert(
                         entry.key,
                         Cached {
@@ -227,6 +248,7 @@ fn main() -> Result<(), String> {
                 .as_secs();
             for (key, entry) in &cache {
                 let persisted = PersistedCache {
+                    format_version: 1,
                     key: key.clone(),
                     effect: entry.effect.clone(),
                     policy_revision: entry.policy_revision.clone(),
@@ -235,6 +257,15 @@ fn main() -> Result<(), String> {
                             .expires
                             .saturating_duration_since(Instant::now())
                             .as_secs(),
+                    checksum: cache_checksum(
+                        key,
+                        &entry.effect,
+                        &entry.policy_revision,
+                        now + entry
+                            .expires
+                            .saturating_duration_since(Instant::now())
+                            .as_secs(),
+                    ),
                 };
                 let _ = serde_json::to_writer(&mut compact, &persisted);
                 let _ = compact.write_all(b"\n");
