@@ -31,6 +31,7 @@ def main():
                         response=json.loads(subprocess.check_output(["runuser","-u",acct.pw_name,"--","python3",str(client),str(sock),"variant-token"],text=True))
                         results.append({"case":name,"uid":acct.pw_uid,"gid":acct.pw_gid,"response":response})
                     p.terminate(); p.wait(timeout=3); sock.unlink(missing_ok=True)
+                    env["AGB_ADMIN_AUTHZ_REVISION"] = "lab-authz-v2"
                     p=subprocess.Popen([str(lab),str(sock),str(cache),str(audit)],env=env)
                     for _ in range(100):
                         if sock.exists(): break
@@ -41,7 +42,7 @@ def main():
                         results.append({"case":name,"restart":True,"uid":acct.pw_uid,"gid":acct.pw_gid,"response":restart_response})
                     audits[name]=[json.loads(line) for line in audit.read_text().splitlines() if line.strip()]
                 finally: p.terminate(); p.wait(timeout=3)
-            if any(len(events) < 4 or any(event.get("authorization_revision") != "lab-authz-v1" for event in events) for events in audits.values()): raise SystemExit("audit log missing variant events or authorization revision")
+            if any(len(events) < 4 or [event.get("authorization_revision") for event in events] != ["lab-authz-v1", "lab-authz-v1", "lab-authz-v2", "lab-authz-v2"] for events in audits.values()): raise SystemExit("audit log missing variant events or authorization revision")
             print(json.dumps({"status":"passed","shared_gid":gid,"results":results,"audit_events":audits},indent=2))
     finally:
         for u in users: subprocess.run(["userdel",u],check=False)
