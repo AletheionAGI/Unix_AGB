@@ -36,11 +36,12 @@ def main():
                         if sock.exists(): break
                         time.sleep(.02)
                     sock.chmod(0o666)
-                    restart_response=json.loads(subprocess.check_output(["runuser","-u",accounts[0].pw_name,"--","python3",str(client),str(sock),"variant-token"],text=True))
-                    results.append({"case":name,"restart":True,"uid":accounts[0].pw_uid,"gid":accounts[0].pw_gid,"response":restart_response})
+                    for acct in accounts:
+                        restart_response=json.loads(subprocess.check_output(["runuser","-u",acct.pw_name,"--","python3",str(client),str(sock),"variant-token"],text=True))
+                        results.append({"case":name,"restart":True,"uid":acct.pw_uid,"gid":acct.pw_gid,"response":restart_response})
                     audits[name]=[json.loads(line) for line in audit.read_text().splitlines() if line.strip()]
                 finally: p.terminate(); p.wait(timeout=3)
-            if any(len(events) < 3 for events in audits.values()): raise SystemExit("audit log missing variant events")
+            if any(len(events) < 4 for events in audits.values()): raise SystemExit("audit log missing variant events")
             print(json.dumps({"status":"passed","shared_gid":gid,"results":results,"audit_events":audits},indent=2))
     finally:
         for u in users: subprocess.run(["userdel",u],check=False)
