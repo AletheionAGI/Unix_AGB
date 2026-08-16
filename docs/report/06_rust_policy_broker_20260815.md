@@ -24,3 +24,5 @@ diretamente o file descriptor do listener seccomp. A próxima integração deve
 conectar o protocolo de notificações do kernel a este daemon e adicionar
 supervisão de restart/health.
 
+O harness seccomp já consegue encaminhar requests ao daemon Rust; a mediação do
+fd do listener ainda permanece no adaptador Python de laboratório.

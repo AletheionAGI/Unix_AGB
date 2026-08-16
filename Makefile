@@ -25,7 +25,7 @@ linux-capabilities:
 	python3 scripts/check_linux_capabilities.py
 
 seccomp-proof:
-	cargo build --quiet --bin agb-gateway
+	cargo build --quiet --bin agb-gateway --bin agb-policy-broker
 	python3 scripts/run_seccomp_broker_proof.py
 
 bpf-pipeline:

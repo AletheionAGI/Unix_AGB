@@ -128,8 +128,25 @@ def make_event(case: str, sequence: int, subject: dict[str, object], operation: 
     }
 
 
+def rust_policy_request(socket_path: str, namespace: str, secret: str,
+                        revision: str, requested_effect: str) -> dict[str, object]:
+    request = {
+        "namespace_id": namespace,
+        "resource": secret,
+        "policy_revision": revision,
+        "requested_effect": requested_effect,
+    }
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        client.connect(socket_path)
+        client.sendall((json.dumps(request, separators=(",", ":")) + "\n").encode())
+        response = client.makefile("rb").readline()
+    if not response:
+        raise RuntimeError("Rust policy broker returned no response")
+    return json.loads(response)
+
+
 def broker(sock: socket.socket, pid: int, secret: str,
-           gateway: subprocess.Popen[str]) -> dict[str, object]:
+           gateway: subprocess.Popen[str], policy_socket: str) -> dict[str, object]:
     message, ancdata, *_ = sock.recvmsg(64, socket.CMSG_LEN(array.array("i").itemsize))
     case = message.decode()
     received = array.array("i")
@@ -140,7 +157,6 @@ def broker(sock: socket.socket, pid: int, secret: str,
         raise RuntimeError("broker did not receive seccomp listener")
     listener = received[0]
     subject = subject_for(pid, "seccomp-lab-workload")
-    cache = DecisionCache(ttl_seconds=2.0)
     gateway_error = None
     try:
         gateway_event(gateway, make_event(case, 1, subject, "process.exec",
@@ -193,13 +209,18 @@ def broker(sock: socket.socket, pid: int, secret: str,
                     "enforcement": {"backend": "seccomp-user-notify", "applied": True},
                 }
             effect = decision_response["decision"]["effect"]
-            cache.put(cache_key, effect, decision_response["decision"]["policy_revision"])
+            policy_response = rust_policy_request(
+                policy_socket, namespace, secret,
+                decision_response["decision"]["policy_revision"], effect,
+            )
+            effect = policy_response["effect"]
         else:
-            cached = cache.get(cache_key, decision_response["decision"]["policy_revision"])
-            if cached is None:
-                raise RuntimeError("decision cache unexpectedly missed")
-            effect = cached
-            cache_hits += 1
+            policy_response = rust_policy_request(
+                policy_socket, namespace, secret,
+                decision_response["decision"]["policy_revision"], effect,
+            )
+            effect = policy_response["effect"]
+            cache_hits += int(policy_response.get("cache_hit", False))
         if effect not in {"ALLOW", "DENY"}:
             raise RuntimeError(f"unsupported gateway effect: {effect}")
         response = struct.pack(
@@ -221,7 +242,7 @@ def broker(sock: socket.socket, pid: int, secret: str,
         "fallback": gateway_error is not None,
         "fallback_reason": gateway_error,
         "external_enforcement": {
-            "backend": "seccomp-user-notify",
+            "backend": "seccomp-user-notify+rust-policy-broker",
             "requested_effect": effect,
             "applied": effect == "DENY",
             "notification_id": notification_ids[0],
@@ -247,8 +268,18 @@ def run_case(case: str, secret: str, root: Path) -> dict[str, object]:
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True,
     )
+    policy_socket = str(root / f"{case}.policy.sock")
+    policy_audit = str(root / f"{case}.enforcement.jsonl")
+    policy_broker = subprocess.Popen(
+        ["target/debug/agb-policy-broker", policy_socket, policy_audit],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    for _ in range(50):
+        if Path(policy_socket).exists():
+            break
+        time.sleep(0.01)
     try:
-        result = broker(left, pid, secret, gateway)
+        result = broker(left, pid, secret, gateway, policy_socket)
         _, status = os.waitpid(pid, 0)
         if status != 0:
             raise RuntimeError(f"workload exited with status {status}")
@@ -257,6 +288,8 @@ def run_case(case: str, secret: str, root: Path) -> dict[str, object]:
         if gateway.stdin:
             gateway.stdin.close()
         gateway.wait(timeout=5)
+        policy_broker.terminate()
+        policy_broker.wait(timeout=5)
         left.close()
 
 
