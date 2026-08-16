@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_LABELS = {"benign", "malicious"}
+ALLOWED_CONFIDENCE = {"high", "low"}
 
 
 def load_jsonl(path: Path, *, required: bool = True) -> list[dict[str, Any]]:
@@ -36,16 +37,22 @@ def load_jsonl(path: Path, *, required: bool = True) -> list[dict[str, Any]]:
 
 def validate_review(review: dict[str, Any], candidate_ids: set[str]) -> dict[str, str]:
     required = {"trajectory_id", "label", "label_source", "family"}
-    if set(review) != required:
-        raise ValueError(f"review fields must be exactly {sorted(required)}")
+    allowed = required | {"review_confidence"}
+    if not required <= set(review) or not set(review) <= allowed:
+        raise ValueError(f"review fields must be {sorted(required)} with optional review_confidence")
     if review["trajectory_id"] not in candidate_ids:
         raise ValueError("unknown trajectory_id")
     if review["label"] not in ALLOWED_LABELS:
         raise ValueError("label must be benign or malicious")
+    confidence = review.get("review_confidence", "high")
+    if confidence not in ALLOWED_CONFIDENCE:
+        raise ValueError("review_confidence must be high or low")
     for field in ("trajectory_id", "label_source", "family"):
         if not isinstance(review[field], str) or not review[field].strip():
             raise ValueError(f"{field} must be a non-empty string")
-    return {field: review[field].strip() for field in required}
+    validated = {field: review[field].strip() for field in required}
+    validated["review_confidence"] = confidence
+    return validated
 
 
 def write_reviews(path: Path, order: list[str], reviews: dict[str, dict[str, str]]) -> None:

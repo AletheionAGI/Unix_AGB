@@ -133,6 +133,14 @@ Evaluation is operation-specific rather than a single reputation label:
 - content, or a tracked derivative of it, sent without authorization is a
   policy violation and may be classified malicious.
 
+The review UI also permits `benign` with `review_confidence = "low"` when the
+available evidence contains no malicious indicator but is insufficient for a
+strong conclusion (for example, a network file descriptor without its
+destination). This remains benign for binary benchmark metrics while preserving
+uncertainty for audit, filtering, and later re-review. It is not an authorization
+to repeat the behavior. Malicious and ordinary benign decisions default to high
+confidence; legacy reviews without the field are interpreted as high confidence.
+
 Consequently, marking a `file.open` trajectory benign never grants egress
 permission. A strong exfiltration finding requires a causal chain from process
 identity through file read and outbound send, including destination and policy

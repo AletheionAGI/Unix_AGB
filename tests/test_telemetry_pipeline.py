@@ -54,6 +54,7 @@ class TelemetryPipelineTests(unittest.TestCase):
         )
         self.assertEqual(corpus[0]["split"], candidate["split"])
         self.assertEqual(corpus[0]["label"], "benign")
+        self.assertEqual(corpus[0]["review_confidence"], "high")
         self.assertEqual(corpus[0]["evaluation_purpose"], "false-positive-monitoring")
 
     def test_exact_protected_executable_selects_security_efficacy(self) -> None:

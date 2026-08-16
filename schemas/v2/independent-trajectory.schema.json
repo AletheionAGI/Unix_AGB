@@ -9,6 +9,7 @@
     "trajectory_id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "label": { "enum": ["benign", "malicious"] },
     "label_source": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "review_confidence": { "enum": ["high", "low"] },
     "family": { "type": "string", "minLength": 1, "maxLength": 128 },
     "split": { "enum": ["calibration", "test"] },
     "collector_revision": { "type": "string", "minLength": 1, "maxLength": 128 },

@@ -214,17 +214,20 @@ def apply_reviews(
             raise IndependentCorpusError(f"candidate {index}: collector revision is required")
 
     review_fields = {"trajectory_id", "label", "label_source", "family"}
+    optional_review_fields = {"review_confidence"}
     by_id: dict[str, dict[str, Any]] = {}
     for index, review in enumerate(reviews, 1):
-        if set(review) != review_fields:
+        if not review_fields <= set(review) or not set(review) <= review_fields | optional_review_fields:
             raise IndependentCorpusError(
-                f"review {index}: fields must be exactly {sorted(review_fields)}"
+                f"review {index}: invalid fields"
             )
         trajectory_id = review["trajectory_id"]
         if trajectory_id in by_id:
             raise IndependentCorpusError(f"duplicate review: {trajectory_id}")
         if review["label"] not in ALLOWED_LABELS:
             raise IndependentCorpusError(f"review {index}: invalid label")
+        if review.get("review_confidence", "high") not in {"high", "low"}:
+            raise IndependentCorpusError(f"review {index}: invalid review confidence")
         if not str(review["label_source"]).strip() or not str(review["family"]).strip():
             raise IndependentCorpusError(f"review {index}: label_source and family are required")
         by_id[trajectory_id] = review
@@ -243,6 +246,9 @@ def apply_reviews(
             "label": by_id[candidate["trajectory_id"]]["label"],
             "label_source": by_id[candidate["trajectory_id"]]["label_source"],
             "family": by_id[candidate["trajectory_id"]]["family"],
+            "review_confidence": by_id[candidate["trajectory_id"]].get(
+                "review_confidence", "high"
+            ),
             "split": candidate["split"],
             "collector_revision": candidate["collector_revision"],
             "coverage_scope": candidate["coverage_scope"],

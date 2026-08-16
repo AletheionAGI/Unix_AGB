@@ -24,6 +24,18 @@ class ReviewUiTests(unittest.TestCase):
             },
             ids,
         )
+        self.assertEqual(first["review_confidence"], "high")
+        low = validate_review(
+            {
+                "trajectory_id": "candidate:b",
+                "label": "benign",
+                "label_source": "human-review:test",
+                "family": "container-runtime",
+                "review_confidence": "low",
+            },
+            ids,
+        )
+        self.assertEqual(low["review_confidence"], "low")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "reviews.jsonl"
             write_reviews(path, ["candidate:b", "candidate:a"], {"candidate:a": first})

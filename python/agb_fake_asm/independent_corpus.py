@@ -50,12 +50,15 @@ def load_independent_corpus(
             "evaluation_purpose",
             "events",
         }
-        if set(item) != required:
+        optional = {"review_confidence"}
+        if not required <= set(item) or not set(item) <= required | optional:
             raise IndependentCorpusError(
-                f"line {line_number}: fields must be exactly {sorted(required)}"
+                f"line {line_number}: invalid fields"
             )
         if item["label"] not in ALLOWED_LABELS or item["split"] not in ALLOWED_SPLITS:
             raise IndependentCorpusError(f"line {line_number}: invalid label or split")
+        if item.get("review_confidence", "high") not in {"high", "low"}:
+            raise IndependentCorpusError(f"line {line_number}: invalid review confidence")
         if item["coverage_scope"] not in ALLOWED_COVERAGE_SCOPES:
             raise IndependentCorpusError(f"line {line_number}: invalid coverage scope")
         if not isinstance(item["coverage_config_sha256"], str) or len(
