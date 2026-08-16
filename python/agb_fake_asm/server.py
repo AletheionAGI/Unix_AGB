@@ -56,6 +56,11 @@ def main() -> None:
     parser.add_argument("--asm-source-root", type=Path)
     parser.add_argument("--asm-checkpoint-sha256")
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--asm-inference-policy",
+        choices=("security-relevant", "all-events"),
+        default="security-relevant",
+    )
     args = parser.parse_args()
     socket_path = Path(args.socket)
     socket_path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +78,7 @@ def main() -> None:
             device=args.device,
             expected_sha256=args.asm_checkpoint_sha256,
             snapshot=args.snapshot,
+            inference_policy=args.asm_inference_policy,
         )
     server = StateEngineServer(os.fspath(socket_path), engine)
     try:

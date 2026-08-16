@@ -358,6 +358,11 @@ def main() -> None:
     parser.add_argument("--asm-source-revision")
     parser.add_argument("--asm-checkpoint-sha256")
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--asm-inference-policy",
+        choices=("security-relevant", "all-events"),
+        default="security-relevant",
+    )
     args = parser.parse_args()
     manifest_bytes = args.manifest.read_bytes()
     manifest = json.loads(manifest_bytes)
@@ -380,6 +385,7 @@ def main() -> None:
             args.asm_source_root,
             device=args.device,
             expected_sha256=args.asm_checkpoint_sha256,
+            inference_policy=args.asm_inference_policy,
         )
         asm_metadata = {
             "checkpoint": str(args.asm_checkpoint.resolve()),
@@ -387,6 +393,7 @@ def main() -> None:
             "source_root": str(args.asm_source_root.resolve()),
             "source_revision": args.asm_source_revision,
             "device": args.device,
+            "inference_policy": args.asm_inference_policy,
         }
     modes = [EventLocalEngine, SequenceRuleEngine, SlidingWindowEngine, mode_d]
     results = [evaluate(mode, trajectories) for mode in modes]

@@ -15,6 +15,7 @@ def main() -> None:
         "scripts/run_live_bpf_observer.py",
         "scripts/bpf_to_events.py",
         "scripts/build_trajectory_candidates.py",
+        "scripts/run_protected_corpus_lab.py",
         "scripts/fingerprint_collector.py",
         "python/agb_fake_asm/telemetry_pipeline.py",
     ]

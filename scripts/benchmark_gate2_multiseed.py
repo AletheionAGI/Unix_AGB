@@ -47,6 +47,11 @@ def main() -> None:
     parser.add_argument("--asm-source-revision", required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument(
+        "--asm-inference-policy",
+        choices=("security-relevant", "all-events"),
+        default="security-relevant",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=ROOT / "var" / "benchmark" / "gate2-adversarial-v2-multiseed.json",
@@ -110,6 +115,7 @@ def main() -> None:
                 args.asm_source_root,
                 device=args.device,
                 expected_sha256=digest,
+                inference_policy=args.asm_inference_policy,
             )
         result = evaluate(engine_factory, trajectories) if trajectories else None
         external_result = (
@@ -142,6 +148,7 @@ def main() -> None:
         "independent_dataset_manifest": independent_manifest,
         "source_revision": args.asm_source_revision,
         "device": args.device,
+        "inference_policy": args.asm_inference_policy,
         "trajectory_count": len(trajectories),
         "event_count": sum(len(item["events"]) for item in trajectories),
         "baselines": baselines,

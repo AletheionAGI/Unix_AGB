@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -25,6 +25,7 @@ benchmark-gate2-asm-cm:
 		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
 		--asm-checkpoint-sha256 "$${ASM_CM_CHECKPOINT_SHA256:?set ASM_CM_CHECKPOINT_SHA256}" \
 		--device "$${ASM_DEVICE:-cuda}" \
+		--asm-inference-policy "$${ASM_INFERENCE_POLICY:-security-relevant}" \
 		--output var/benchmark/gate2-v1-asm-cm-report.json
 
 benchmark-gate2-multiseed:
@@ -35,6 +36,7 @@ benchmark-gate2-multiseed:
 		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
 		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
 		--device "$${ASM_DEVICE:-cuda}" \
+		--asm-inference-policy "$${ASM_INFERENCE_POLICY:-security-relevant}" \
 		--output var/benchmark/gate2-adversarial-v2-multiseed.json
 
 benchmark-gate2-multiseed-independent:
@@ -46,6 +48,7 @@ benchmark-gate2-multiseed-independent:
 		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
 		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
 		--device "$${ASM_DEVICE:-cuda}" \
+		--asm-inference-policy "$${ASM_INFERENCE_POLICY:-security-relevant}" \
 		--output var/benchmark/gate2-independent-multiseed.json
 
 capture-independent-events:
@@ -53,6 +56,7 @@ capture-independent-events:
 		--duration "$${AGB_CAPTURE_DURATION:-60}" \
 		--bpftrace-command "$${AGB_BPFTRACE_COMMAND:-bpftrace}" \
 		--target-uid "$${AGB_CAPTURE_UID:--1}" \
+		$${AGB_SENSITIVE_PATH:+--sensitive-path "$${AGB_SENSITIVE_PATH}"} \
 		--output-events "$${AGB_CAPTURE_EVENTS:-var/telemetry/bpf-events.jsonl}"
 
 build-independent-candidates:
@@ -63,7 +67,8 @@ build-independent-candidates:
 		--min-events "$${AGB_MIN_TRAJECTORY_EVENTS:-1}" \
 		--max-events "$${AGB_MAX_TRAJECTORY_EVENTS:-256}" \
 		--coverage-scope "$${AGB_COVERAGE_SCOPE:-system-wide}" \
-		--protected-executables "$${AGB_PROTECTED_EXECUTABLES:-}"
+		--protected-executables "$${AGB_PROTECTED_EXECUTABLES:-}" \
+		$${AGB_EXCLUDE_EXTERNAL:+--exclude-external}
 
 build-review-queue:
 	PYTHONPATH=python:scripts python3 scripts/build_review_queue.py \
@@ -92,6 +97,13 @@ freeze-independent-corpus:
 	PYTHONPATH=python:scripts python3 scripts/freeze_independent_corpus.py \
 		--input "$${AGB_INDEPENDENT_CORPUS:?set AGB_INDEPENDENT_CORPUS}" \
 		--output "$${AGB_INDEPENDENT_MANIFEST:-var/benchmark/independent-manifest.json}"
+
+protected-corpus-lab:
+	cargo build --quiet --bin agb-lab-workload
+	PYTHONPATH=python:scripts python3 scripts/run_protected_corpus_lab.py \
+		--bpftrace-command "$${AGB_BPFTRACE_COMMAND:-sudo bpftrace}" \
+		--duration "$${AGB_PROTECTED_LAB_DURATION:-15}" \
+		--cases-per-class "$${AGB_PROTECTED_LAB_CASES:-30}"
 
 causal-proof:
 	cargo run --quiet --bin agb-causal-proof

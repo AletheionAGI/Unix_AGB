@@ -139,6 +139,28 @@ class Gate2BenchmarkTests(unittest.TestCase):
         with self.assertRaisesRegex(AsmCmUnavailable, "checkpoint not found"):
             AsmCmEngine(Path("/missing/asm-cm.pt"), ROOT)
 
+    def test_selective_adapter_skips_ordinary_file_events(self) -> None:
+        engine = AsmCmEngine.__new__(AsmCmEngine)
+        engine.namespaces = {}
+        engine.snapshot = None
+        engine.checkpoint_sha256 = "checkpoint:test"
+        engine.inference_policy = "security-relevant"
+        calls: list[list[int]] = []
+        engine._feed = lambda state, tokens: calls.append(tokens) or object()
+
+        ordinary = dict(self.trajectories[0]["events"][0])
+        ordinary["operation"] = "file.open"
+        ordinary["labels"] = []
+        ordinary_decision = engine.update(ordinary)
+        self.assertFalse(ordinary_decision["model_inference_performed"])
+        self.assertEqual(calls, [])
+
+        network = {**ordinary, "event_id": "event:network", "sequence": 2}
+        network["operation"] = "network.connect"
+        network_decision = engine.update(network)
+        self.assertTrue(network_decision["model_inference_performed"])
+        self.assertEqual(len(calls), 1)
+
     def test_adversarial_v2_keeps_strong_sequence_baseline(self) -> None:
         manifest = json.loads(
             (ROOT / "fixtures" / "benchmark" / "gate2-adversarial-v2.json").read_text()

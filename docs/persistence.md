@@ -151,6 +151,14 @@ of interpreting every derived window boundary as a sequence gap. Reports also
 separate all-event, ingest, query, and model-inference latency; an empty class is
 represented by a zero sample count and null percentiles.
 
+The ASM-CM adapter defaults to the versioned `security-relevant` inference
+policy: ordinary events still advance canonical process sequence and audit
+state, but only untrusted network relations, trusted resets/network updates, and
+sensitive queries invoke neural `decode_step`. The legacy `all-events` policy is
+available only for controlled comparison. Snapshot restore rejects a different
+inference policy, preventing state created under one tokenization schedule from
+being silently reused under another.
+
 Consequently, marking a `file.open` trajectory benign never grants egress
 permission. A strong exfiltration finding requires a causal chain from process
 identity through file read and outbound send, including destination and policy

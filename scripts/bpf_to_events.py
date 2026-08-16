@@ -43,7 +43,12 @@ def subject_for(
     }
 
 
-def normalize(line: str, sequences: dict[str, int]) -> dict[str, object] | None:
+def normalize(
+    line: str,
+    sequences: dict[str, int],
+    *,
+    sensitive_paths: set[str] | None = None,
+) -> dict[str, object] | None:
     fields = line.rstrip("\n").split("|")
     if len(fields) < 3 or fields[0] != "AGB_BPF":
         return None
@@ -63,11 +68,31 @@ def normalize(line: str, sequences: dict[str, int]) -> dict[str, object] | None:
         resource = {"type": "process", "path": attributes.get("exe", subject["exe"])}
         labels: list[str] = []
     elif operation == "file.open":
-        resource = {"type": "file", "path": attributes.get("path", "<unknown>")}
-        labels = []
+        path = attributes.get("path", "<unknown>")
+        resource = {"type": "file", "path": path}
+        labels = ["credential"] if path in (sensitive_paths or set()) else []
     elif operation == "network.connect":
         resource = {"type": "network", "fd": int(attributes.get("fd", "-1"))}
-        labels = []
+        family = attributes.get("family")
+        if family:
+            resource["family"] = family
+        protocol_number = int(attributes.get("protocol", "0"))
+        socket_type = int(attributes.get("socket_type", "0"))
+        protocol_names = {6: "tcp", 17: "udp"}
+        socket_type_names = {1: "stream", 2: "datagram", 3: "raw"}
+        resource["protocol"] = protocol_names.get(protocol_number, "unknown")
+        resource["protocol_number"] = protocol_number
+        resource["socket_type"] = socket_type_names.get(socket_type & 0xF, "unknown")
+        resource["socket_type_number"] = socket_type
+        if "address" in attributes:
+            resource["address"] = attributes["address"]
+        if "port" in attributes:
+            resource["port"] = int(attributes["port"])
+        if "unix_path" in attributes:
+            resource["path"] = attributes["unix_path"] or "<anonymous-unix-socket>"
+        if "addrlen" in attributes:
+            resource["addrlen"] = int(attributes["addrlen"])
+        labels = ["network-destination-observed"] if family else []
     else:
         raise ValueError(f"unsupported BPF operation: {operation}")
     return {
@@ -92,13 +117,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pid", type=int, help="optional test PID for a single input stream")
     parser.add_argument("--output", help="write JSONL to a file instead of stdout")
+    parser.add_argument("--sensitive-path", action="append", default=[])
     args = parser.parse_args()
     sequences: dict[str, int] = {}
     output = open(args.output, "w") if args.output else sys.stdout
     try:
         for line in sys.stdin:
             try:
-                event = normalize(line, sequences)
+                event = normalize(line, sequences, sensitive_paths=set(args.sensitive_path))
                 if event is not None:
                     output.write(json.dumps(event, separators=(",", ":")) + "\n")
                     output.flush()

@@ -218,6 +218,15 @@ runs the three promoted ASM-CM seeds against only the frozen test split. It
 requires the same three checkpoint/source variables as the adversarial multi-seed
 target plus `AGB_INDEPENDENT_CORPUS`.
 
+A fail-closed protected laboratory corpus can be collected with
+`make protected-corpus-lab`. It launches equal benign and suspicious instances
+of the dedicated Rust workload, connects suspicious cases only to a loopback
+listener, opens a local canary without transmitting its contents, and labels
+the canary as sensitive through explicit collector policy. The command rejects
+lost BPF events, missing PIDs, incomplete causal chains, or unexpected
+executables. Outputs remain local under `var/telemetry/protected-lab/`; this
+controlled corpus complements but does not replace diverse natural workloads.
+
 ## Reproducible causal proof
 
 The first controlled proof uses two isolated processes that perform the same

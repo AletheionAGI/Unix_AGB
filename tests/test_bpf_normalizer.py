@@ -21,3 +21,37 @@ class BpfNormalizerTests(unittest.TestCase):
         self.assertEqual(event["sequence"], 1)
         self.assertIn("start_time_ns", event["subject"])
 
+    def test_preserves_network_destination_and_socket_metadata(self) -> None:
+        sequences: dict[str, int] = {}
+        event = normalize(
+            f"AGB_BPF|network.connect|pid={os.getpid()}|uid={os.getuid()}|"
+            "gid=1000|comm=python|fd=7|family=AF_INET|address=198.51.100.42|"
+            "port=443|socket_type=1|protocol=6|addrlen=16",
+            sequences,
+        )
+        assert event is not None
+        self.assertEqual(
+            event["resource"],
+            {
+                "type": "network",
+                "fd": 7,
+                "family": "AF_INET",
+                "protocol": "tcp",
+                "protocol_number": 6,
+                "socket_type": "stream",
+                "socket_type_number": 1,
+                "address": "198.51.100.42",
+                "port": 443,
+                "addrlen": 16,
+            },
+        )
+        self.assertIn("network-destination-observed", event["labels"])
+
+    def test_sensitive_path_is_labeled_only_by_explicit_policy(self) -> None:
+        line = (
+            f"AGB_BPF|file.open|pid={os.getpid()}|uid={os.getuid()}|gid=1000|"
+            "comm=lab|path=/tmp/agb-canary"
+        )
+        event = normalize(line, {}, sensitive_paths={"/tmp/agb-canary"})
+        assert event is not None
+        self.assertEqual(event["labels"], ["credential"])

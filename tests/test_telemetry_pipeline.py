@@ -68,6 +68,20 @@ class TelemetryPipelineTests(unittest.TestCase):
         self.assertEqual(candidate["subject_scope"], "protected")
         self.assertEqual(candidate["evaluation_purpose"], "security-efficacy")
 
+    def test_external_processes_can_be_excluded_from_protected_corpus(self) -> None:
+        item = observed("process:boot-a:10:100", 1)
+        executable = str(item["subject"]["exe"])
+        other = observed("process:boot-b:11:101", 1)
+        other["subject"] = {**other["subject"], "exe": "/usr/bin/unrelated"}
+        candidates = build_candidates(
+            [item, other],
+            collector_revision="revision:test",
+            protected_executables={executable},
+            include_external=False,
+        )
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["subject_scope"], "protected")
+
     def test_long_processes_are_windowed_without_cross_split_leakage(self) -> None:
         namespace = "process:boot-a:10:100"
         candidates = build_candidates(

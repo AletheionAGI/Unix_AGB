@@ -51,6 +51,10 @@ def summarize_candidate(candidate: dict[str, Any], *, max_resources: int = 8) ->
         operation_counts[str(event.get("operation", "unknown"))] += 1
         resource = event.get("resource", {})
         value = resource.get("path") if isinstance(resource, dict) else None
+        if value is None and isinstance(resource, dict) and "address" in resource:
+            address = str(resource["address"])
+            port = resource.get("port")
+            value = f"{address}:{port}" if port is not None else address
         if value is None and isinstance(resource, dict) and "fd" in resource:
             value = f"fd:{resource['fd']}"
         if value is not None and str(value) not in resources and len(resources) < max_resources:
@@ -97,6 +101,7 @@ def build_candidates(
     max_events: int = 256,
     coverage_scope: str = "system-wide",
     protected_executables: set[str] | None = None,
+    include_external: bool = True,
 ) -> list[dict[str, Any]]:
     if not collector_revision.strip():
         raise IndependentCorpusError("collector revision is required")
@@ -114,6 +119,7 @@ def build_candidates(
             {
                 "coverage_scope": coverage_scope,
                 "protected_executables": sorted(protected_executables),
+                "include_external": include_external,
             },
             separators=(",", ":"),
             sort_keys=True,
@@ -148,6 +154,8 @@ def build_candidates(
         namespace_bucket = int(hashlib.sha256(namespace.encode()).hexdigest()[:8], 16) % 100
         split = "calibration" if namespace_bucket < calibration_percent else "test"
         executable = str(observed[0].get("subject", {}).get("exe", ""))
+        if not include_external and executable not in protected_executables:
+            continue
         subject_scope = (
             "protected"
             if coverage_scope == "protected-only" or executable in protected_executables

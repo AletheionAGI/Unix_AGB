@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--output-events", type=Path)
     parser.add_argument("--bpftrace-command", default="bpftrace")
     parser.add_argument("--target-uid", type=int, default=-1)
+    parser.add_argument("--sensitive-path", action="append", default=[])
     args = parser.parse_args()
     if args.target_uid < -1:
         parser.error("--target-uid must be -1 (system-wide) or a non-negative UID")
@@ -89,7 +90,7 @@ def main() -> None:
                 print(line, end="", file=sys.stderr)
                 continue
             try:
-                event = normalize(line, sequences)
+                event = normalize(line, sequences, sensitive_paths=set(args.sensitive_path))
             except (KeyError, OSError, ValueError) as error:
                 print(f"live_bpf_observer: {error}", file=sys.stderr)
                 continue

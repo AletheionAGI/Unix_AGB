@@ -25,7 +25,8 @@ FILLER_OFFSET = 98
 FILLER_COUNT = 158
 QUERY_TOKEN = 1
 MINIMUM_MQAR_SEQUENCE = 40
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
+INFERENCE_POLICIES = {"security-relevant", "all-events"}
 
 
 class AsmCmUnavailable(RuntimeError):
@@ -64,10 +65,14 @@ class AsmCmEngine:
         device: str = "cpu",
         expected_sha256: str | None = None,
         snapshot: Path | None = None,
+        inference_policy: str = "security-relevant",
     ) -> None:
         self.checkpoint = checkpoint.resolve()
         self.source_root = source_root.resolve()
         self.snapshot = snapshot
+        if inference_policy not in INFERENCE_POLICIES:
+            raise AsmCmUnavailable(f"unsupported ASM-CM inference policy: {inference_policy}")
+        self.inference_policy = inference_policy
         if not self.checkpoint.is_file():
             raise AsmCmUnavailable(f"ASM-CM checkpoint not found: {self.checkpoint}")
         if not (self.source_root / "drm_language_emitter").is_dir():
@@ -182,9 +187,11 @@ class AsmCmEngine:
             sensitive = operation == "file.open" and "credential" in event.get("labels", [])
             confidence: float | None = None
             selected: str | None = None
+            model_inference_performed = False
             reset = operation == "identity.change" and "trusted-reset" in event.get("labels", [])
             trusted_network = operation == "network.connect" and "trusted-network" in event.get("labels", [])
             if operation == "network.connect" and not trusted_network:
+                model_inference_performed = True
                 value = state.next_value
                 state.next_value = VALUE_OFFSET + ((value - VALUE_OFFSET + 1) % VALUE_CAPACITY)
                 state.evidence_by_value[value] = event["event_id"]  # type: ignore[index]
@@ -192,6 +199,7 @@ class AsmCmEngine:
                     state.inference_state, [NETWORK_RELATION_KEY, value]
                 )
             elif reset or trusted_network:
+                model_inference_performed = True
                 safe_value = state.next_value
                 state.next_value = VALUE_OFFSET + (
                     (safe_value - VALUE_OFFSET + 1) % VALUE_CAPACITY
@@ -200,9 +208,11 @@ class AsmCmEngine:
                     state.inference_state, [NETWORK_RELATION_KEY, safe_value]
                 )
             elif sensitive:
+                model_inference_performed = True
                 predicted, confidence = self._predict(state.inference_state)
                 selected = state.evidence_by_value.get(predicted)  # type: ignore[union-attr]
-            else:
+            elif self.inference_policy == "all-events":
+                model_inference_performed = True
                 state.inference_state = self._feed(
                     state.inference_state, [self._filler(event)]
                 )
@@ -217,7 +227,8 @@ class AsmCmEngine:
                 "confidence": confidence,
                 "state_revision": state.revision,
                 "checkpoint_fingerprint": self.checkpoint_sha256,
-                "model_inference_performed": True,
+                "model_inference_performed": model_inference_performed,
+                "inference_policy": self.inference_policy,
             }
             if self.snapshot:
                 self.checkpoint_state(self.snapshot)
@@ -275,6 +286,7 @@ class AsmCmEngine:
         payload = {
             "snapshot_version": SNAPSHOT_VERSION,
             "checkpoint_sha256": self.checkpoint_sha256,
+            "inference_policy": self.inference_policy,
             "namespaces": {
                 namespace_id: {
                     "revision": state.revision,
@@ -310,6 +322,8 @@ class AsmCmEngine:
             raise AsmCmUnavailable("unsupported ASM-CM state snapshot")
         if payload["checkpoint_sha256"] != self.checkpoint_sha256:
             raise AsmCmUnavailable("state snapshot belongs to another ASM-CM checkpoint")
+        if payload["inference_policy"] != self.inference_policy:
+            raise AsmCmUnavailable("state snapshot belongs to another inference policy")
         self.namespaces = {
             namespace_id: _Namespace(
                 revision=value["revision"],
