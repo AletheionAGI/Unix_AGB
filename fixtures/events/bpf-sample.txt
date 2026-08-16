@@ -1,0 +1,2 @@
+AGB_BPF|process.exec|pid=1|exe=/sbin/init
+AGB_BPF|file.open|pid=1|path=/etc/hostname
