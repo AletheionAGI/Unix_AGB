@@ -19,23 +19,24 @@ tracepoint:syscalls:sys_enter_connect
 {
   $sa = (struct sockaddr *)uptr(args->uservaddr);
   $family = $sa->sa_family;
-  $type = @socket_type[pid, args->fd];
-  $protocol = @socket_protocol[pid, args->fd];
+  $fd = (int64)args->fd;
+  $type = @socket_type[pid, $fd];
+  $protocol = @socket_protocol[pid, $fd];
   if ($family == 2) {
     $sin = (struct sockaddr_in *)$sa;
     printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, args->fd, ntop(2, $sin->sin_addr.s_addr), bswap($sin->sin_port), $type, $protocol, args->addrlen);
+      pid, uid, gid, comm, $fd, ntop(2, $sin->sin_addr.s_addr), bswap($sin->sin_port), $type, $protocol, args->addrlen);
   } else if ($family == 10) {
     $sin6 = (struct sockaddr_in6 *)$sa;
     printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET6|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, args->fd, ntop(10, $sin6->sin6_addr.in6_u.u6_addr8), bswap($sin6->sin6_port), $type, $protocol, args->addrlen);
+      pid, uid, gid, comm, $fd, ntop(10, $sin6->sin6_addr.in6_u.u6_addr8), bswap($sin6->sin6_port), $type, $protocol, args->addrlen);
   } else if ($family == 1) {
     $sun = (struct sockaddr_un *)$sa;
     printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_UNIX|unix_path=%s|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, args->fd, str($sun->sun_path), $type, $protocol, args->addrlen);
+      pid, uid, gid, comm, $fd, str($sun->sun_path), $type, $protocol, args->addrlen);
   } else {
     printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, args->fd, $family, $type, $protocol, args->addrlen);
+      pid, uid, gid, comm, $fd, $family, $type, $protocol, args->addrlen);
   }
 }
 
@@ -51,9 +52,10 @@ tracepoint:syscalls:sys_exit_socket
     /@pending_socket_family[tid]/
 {
   if (args->ret >= 0) {
-    @socket_family[pid, args->ret] = @pending_socket_family[tid];
-    @socket_type[pid, args->ret] = @pending_socket_type[tid];
-    @socket_protocol[pid, args->ret] = @pending_socket_protocol[tid];
+    $fd = (int64)args->ret;
+    @socket_family[pid, $fd] = @pending_socket_family[tid];
+    @socket_type[pid, $fd] = @pending_socket_type[tid];
+    @socket_protocol[pid, $fd] = @pending_socket_protocol[tid];
   }
   delete(@pending_socket_family[tid]);
   delete(@pending_socket_type[tid]);
@@ -62,7 +64,8 @@ tracepoint:syscalls:sys_exit_socket
 
 tracepoint:syscalls:sys_enter_close
 {
-  delete(@socket_family[pid, args->fd]);
-  delete(@socket_type[pid, args->fd]);
-  delete(@socket_protocol[pid, args->fd]);
+  $fd = (int64)args->fd;
+  delete(@socket_family[pid, $fd]);
+  delete(@socket_type[pid, $fd]);
+  delete(@socket_protocol[pid, $fd]);
 }

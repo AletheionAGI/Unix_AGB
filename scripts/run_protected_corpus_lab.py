@@ -98,6 +98,8 @@ def main() -> None:
     ground_truth: dict[int, str] = {}
     try:
         time.sleep(2)
+        if observer.poll() is not None:
+            raise RuntimeError("BPF observer failed during startup validation")
         for index in range(args.cases_per_class * 2):
             case = "benign" if index % 2 == 0 else "suspicious"
             process = subprocess.Popen(
