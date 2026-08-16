@@ -141,17 +141,21 @@ def broker(sock: socket.socket, pid: int, secret: str,
     listener = received[0]
     subject = subject_for(pid, "seccomp-lab-workload")
     cache = DecisionCache(ttl_seconds=2.0)
-    gateway_event(gateway, make_event(case, 1, subject, "process.exec",
-                                       {"type": "process", "path": subject["exe"]},
-                                       "allowed", []))
-    if case == "benign":
-        gateway_event(gateway, make_event(case, 2, subject, "file.open",
-                                           {"type": "file", "path": "/tmp/agent.conf"},
-                                           "allowed", ["configuration"]))
-    else:
-        gateway_event(gateway, make_event(case, 2, subject, "network.connect",
-                                           {"type": "network", "host": "127.0.0.1", "port": 9},
-                                           "allowed", ["external"]))
+    gateway_error = None
+    try:
+        gateway_event(gateway, make_event(case, 1, subject, "process.exec",
+                                           {"type": "process", "path": subject["exe"]},
+                                           "allowed", []))
+        if case == "benign":
+            gateway_event(gateway, make_event(case, 2, subject, "file.open",
+                                               {"type": "file", "path": "/tmp/agent.conf"},
+                                               "allowed", ["configuration"]))
+        else:
+            gateway_event(gateway, make_event(case, 2, subject, "network.connect",
+                                               {"type": "network", "host": "127.0.0.1", "port": 9},
+                                               "allowed", ["external"]))
+    except Exception as error:
+        gateway_error = str(error)
     namespace = f"process:{subject['boot_id']}:{subject['pid']}:{subject['start_time_ns']}"
     cache_key = (namespace, secret, "trajectory")
     decision_response = None
@@ -169,11 +173,25 @@ def broker(sock: socket.socket, pid: int, secret: str,
             raise RuntimeError("invalid seccomp notification id")
         notification_ids.append(event_id)
         if attempt == 0:
-            decision_response = gateway_event(
-                gateway,
-                make_event(case, 3, subject, "file.open",
-                           {"type": "file", "path": secret}, "requested", ["credential"]),
-            )
+            if gateway_error is None:
+                try:
+                    decision_response = gateway_event(
+                        gateway,
+                        make_event(case, 3, subject, "file.open",
+                                   {"type": "file", "path": secret}, "requested", ["credential"]),
+                    )
+                except Exception as error:
+                    gateway_error = str(error)
+            if gateway_error is not None:
+                decision_response = {
+                    "decision": {
+                        "effect": "DENY",
+                        "policy_revision": "policy:fallback-fail-closed",
+                        "reason_codes": ["AGB_GATEWAY_UNAVAILABLE"],
+                        "evidence_ids": [],
+                    },
+                    "enforcement": {"backend": "seccomp-user-notify", "applied": True},
+                }
             effect = decision_response["decision"]["effect"]
             cache.put(cache_key, effect, decision_response["decision"]["policy_revision"])
         else:
@@ -200,6 +218,8 @@ def broker(sock: socket.socket, pid: int, secret: str,
         "shadow_effect": effect,
         "decision": decision_response["decision"],
         "gateway_enforcement": decision_response["enforcement"],
+        "fallback": gateway_error is not None,
+        "fallback_reason": gateway_error,
         "external_enforcement": {
             "backend": "seccomp-user-notify",
             "requested_effect": effect,
