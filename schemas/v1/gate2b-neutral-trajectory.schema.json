@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unix-agb.local/schemas/v1/gate2b-neutral-trajectory.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "trajectory_id", "split", "label", "distance", "agent_id", "session_id", "tool_id", "family_id", "events", "tokens"],
+  "properties": {
+    "schema_version": {"const": "gate2b-neutral-v1"},
+    "trajectory_id": {"type": "string", "pattern": "^ntraj:[0-9]+$"},
+    "split": {"enum": ["calibration", "validation", "test-composition", "test-hidden-family"]},
+    "label": {"enum": ["benign", "malicious"]},
+    "distance": {"enum": [4, 16, 64, 256, 1024]},
+    "agent_id": {"type": "string"}, "session_id": {"type": "string"},
+    "tool_id": {"type": "string"}, "family_id": {"type": "string"},
+    "events": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["subject", "relation", "object"], "properties": {"subject": {"type": "string"}, "relation": {"enum": ["R0", "R1", "R2", "R3", "R4", "R5", "RN"]}, "object": {"type": "string"}}}},
+    "tokens": {"type": "array", "minItems": 2, "items": {"type": "integer", "minimum": 0, "maximum": 255}}
+  }
+}

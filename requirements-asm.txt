@@ -1,3 +1,4 @@
 # Optional Gate 2 ASM-CM runtime. Keep the base Gate 0 test path dependency-free.
 torch>=2.13,<3
 numpy>=2,<3
+matplotlib>=3.10,<4

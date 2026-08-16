@@ -28,6 +28,8 @@ remains authoritative in `ROADMAP.md`.
   authenticated deny-only cache with enforcement explicitly disabled.
 - report 82: grouped audit-only persistence, mandatory pre-cache deny `fsync`,
   and one temporary process-local denial with teardown/restart rollback.
+- report 83: preregistered neutral Gate 2B protocol, physically sealed holdout,
+  frozen baselines, and an operator-side three-seed ASM-CM training runner.
 
 ## Administrative boundary
 
@@ -50,6 +52,8 @@ remains authoritative in `ROADMAP.md`.
   enforcement policy. Gate 3 now has a real-ASM-CM deny-only dry-run pipeline;
   Gate 4 now has one controlled process-local denial proof, not a production
   enforcement backend.
+- Gate 2B is a preregistered but not yet executed scientific challenge. Its
+  outcome may support or refute the need for ASM-CM relative to simpler methods.
 
 New work should update this index when it changes the current interpretation;
 small chronological reports may still be retained for reproducibility.

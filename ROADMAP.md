@@ -89,6 +89,18 @@ audit persistence, and admin-server restart, are recorded in
 
 ## Gate 2 — ASM-CM state runtime
 
+### Gate 2B — causal generalization challenge
+
+The next scientific gate is preregistered separately from the controlled Gate 2
+engineering promotion. It uses abstract relation/entity tokens, held-out
+agent/tool composition, a completely hidden family, causal distances from 4 to
+1024, bounded-state FSM/CEP/window/score controls, and a learned GRU control.
+Baselines are fingerprinted before ASM-CM training, and test labels remain
+unevaluated until three candidate checkpoints are frozen. A consistent
+five-percentage-point advantage at long distance and on the hidden family is
+required; a tie or loss is an explicit refutation. See
+`docs/gate2b-causal-generalization.md`.
+
 The repository now contains a deterministic `StateEngine` seam, a Python
 stateful proxy, and a real promoted-checkpoint ASM-CM adapter behind the
 Unix-socket boundary. Both have checksummed snapshots and participate in the
