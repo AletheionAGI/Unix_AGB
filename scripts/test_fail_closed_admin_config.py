@@ -18,8 +18,19 @@ for case, allowlist, request_token, expected_reason in (("absent", {}, "fail-clo
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.connect(str(sock)); client.sendall((json.dumps({"token":request_token,"operation":"list","operator":"test"}) + "\n").encode())
             response=json.loads(client.makefile("rb").readline())
+        if case == "absent":
+            process.terminate(); process.wait(timeout=3); sock.unlink(missing_ok=True)
+            process = subprocess.Popen([str(root / "target/debug/agb-admin-server"), str(sock), str(base / "cache"), str(audit)], env=env)
+            for _ in range(100):
+                if sock.exists(): break
+                time.sleep(.02)
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.connect(str(sock)); client.sendall((json.dumps({"token":request_token,"operation":"list"}) + "\n").encode())
+                restarted=json.loads(client.makefile("rb").readline())
+            if restarted.get("reason") != expected_reason: raise SystemExit("fail-closed decision changed after restart")
         records=[json.loads(line) for line in audit.read_text().splitlines()]
-        if response.get("reason") != expected_reason or len(records) != 1 or records[0].get("reason") != expected_reason:
+        expected_count = 2 if case == "absent" else 1
+        if response.get("reason") != expected_reason or len(records) != expected_count or any(record.get("reason") != expected_reason for record in records):
             raise SystemExit("fail-closed configuration was not enforced and audited")
         print(json.dumps({"status":"passed","case":case,"response":response,"audit_events":records},indent=2))
     finally:
