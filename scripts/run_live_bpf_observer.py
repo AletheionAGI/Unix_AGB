@@ -17,8 +17,11 @@ for line in process.stdout:
  if result.returncode == 0 and result.stdout.strip():
   event=result.stdout.strip(); output={"event":json.loads(event)}
   if args.broker_socket:
+   canonical=output["event"]
+   resource=canonical.get("resource", {})
+   request={"namespace_id":canonical["namespace_id"],"resource":resource.get("path") or str(resource.get("fd", "unknown")),"policy_revision":canonical["policy_revision"],"requested_effect":"ALLOW","operation":canonical["operation"]}
    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as client:
-    client.connect(args.broker_socket); client.sendall((event+"\n").encode()); output["broker_response"]=json.loads(client.makefile("rb").readline())
+    client.connect(args.broker_socket); client.sendall((json.dumps(request)+"\n").encode()); output["broker_request"]=request; output["broker_response"]=json.loads(client.makefile("rb").readline())
   print(json.dumps(output)); count+=1
 process.wait()
 print('{"observer":"bpftrace","events":%d,"status":"stopped"}' % count)
