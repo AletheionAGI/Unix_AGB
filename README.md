@@ -147,13 +147,18 @@ externally attested collector revision.
 
 The `sudo` prefix is only needed when the current user lacks tracingfs/BPF
 privileges; delegated capabilities can be used instead. The command fails without
-replacing an earlier capture if permission is denied or no events are seen. Review
-By default the observer captures the complete host. Set `AGB_CAPTURE_UID` to a
+replacing an earlier capture if permission is denied or no events are seen. By
+default the laboratory observer captures the complete host. Set `AGB_CAPTURE_UID` to a
 numeric UID only when an authorized collection must be deliberately restricted.
 The runner translates the system-wide `-1` sentinel to a non-option positional
 value before invoking bpftrace. The collector excludes its own PID to prevent
 observer feedback, and any kernel-reported lost event count invalidates the
-capture instead of publishing incomplete causal evidence.
+capture instead of publishing incomplete causal evidence. Production setup will
+require a persisted choice among `system-wide`, `protected-only`, and `allowlist`;
+outside-scope activity means “not observed”, never “safe”. The complete consent
+and coverage contract is defined in `docs/persistence.md`.
+
+Review
 `var/telemetry/trajectory-candidates.jsonl` independently, then write one JSONL
 decision per candidate to `var/telemetry/trajectory-reviews.jsonl`:
 

@@ -73,6 +73,10 @@ Completed and documented in `docs/report/03` through `docs/report/46`:
 Still outstanding:
 
 - production observer and non-cooperative system-wide enforcement;
+- explicit telemetry-consent configuration with `system-wide`, `protected-only`,
+  and executable/service/cgroup `allowlist` scopes;
+- propagation of effective coverage and its configuration digest into captures,
+  frozen manifests, reports, audits, and the operator GUI;
 - Gate 2 state runtime, Gate 3 policy engine, and Gates 5–7 deliverables.
 
 Completed privileged variants, including shared-group and UID-only execution,

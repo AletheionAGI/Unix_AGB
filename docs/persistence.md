@@ -60,6 +60,50 @@ atomic replacement, paired with a SHA-256 sidecar, and loaded with PyTorch's
 restricted `weights_only` deserializer. Restore verifies both the state digest
 and originating model-checkpoint digest before exposing any recovered state.
 
+## Telemetry consent and coverage
+
+Production collection must not silently assume permission to observe unrelated
+programs. Initial setup requires an explicit operator choice, represented by a
+versioned configuration rather than an implicit command-line default:
+
+```toml
+[telemetry]
+scope = "system-wide" # system-wide | protected-only | allowlist
+
+# Used only when scope = "allowlist".
+executables = ["/opt/google/chrome/chrome"]
+services = []
+cgroups = []
+exclude_executables = []
+```
+
+The scopes have distinct coverage semantics:
+
+- `system-wide` observes every authorized process on the host and permits only
+  host-wide claims within the recorded time window;
+- `protected-only` observes Unix-AGB and explicitly protected workloads, and
+  makes no claim about other host activity;
+- `allowlist` observes only the configured executables, services, or cgroups and
+  makes no claim outside that set.
+
+The user-facing first-run question may present the simpler choice “permit
+telemetry from external programs?”, mapping `yes` to `system-wide` and `no` to
+`protected-only`. Advanced configuration may then select `allowlist`. Refusal
+must not be treated as an error or silently overridden.
+
+Coverage changes what can be diagnosed, not the truth definition of a label.
+Activity outside the selected scope is **not observed**; it is never inferred to
+be benign, malicious, allowed, or safe. External telemetry must also remain in
+its exact process namespace unless an explicit, versioned causal relationship
+authorizes correlation with a protected workload.
+
+Every capture, candidate set, frozen corpus manifest, benchmark report, and
+audit summary must record the normalized scope, effective inclusions and
+exclusions, configuration digest, and whether coverage was complete or partial.
+Artifacts with different coverage are not directly comparable unless the
+comparison explicitly accounts for that difference. Changing scope requires a
+new capture revision and cannot retroactively reinterpret an existing corpus.
+
 ## Decision-aware retention
 
 The production observer may inspect the complete authorized host event stream,
@@ -96,8 +140,9 @@ retention, and migration of both formats remain production requirements.
 
 A future local GUI reads retention statistics through a read-only administrative
 interface; it does not read storage files directly and cannot mutate enforcement
-state. It reports at least unique positive processes, negative decisions, and
-their time window. Desktop notifications are emitted for new negative decisions
+state. It permanently displays the active telemetry scope and clearly marks
+partial coverage. It reports at least unique positive processes, negative decisions,
+and their time window. Desktop notifications are emitted for new negative decisions
 only, are grouped and rate-limited, and expose no sensitive resource path on the
 lock screen by default. Notification delivery is informational and never part of
 the enforcement success path.
