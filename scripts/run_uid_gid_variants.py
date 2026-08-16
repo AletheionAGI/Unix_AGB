@@ -32,6 +32,7 @@ def main():
                         results.append({"case":name,"uid":acct.pw_uid,"gid":acct.pw_gid,"response":response})
                     p.terminate(); p.wait(timeout=3); sock.unlink(missing_ok=True)
                     env["AGB_ADMIN_AUTHZ_REVISION"] = "lab-authz-v2"
+                    if name == "uid_only": env["AGB_ADMIN_UIDS"] = str(accounts[1].pw_uid)
                     p=subprocess.Popen([str(lab),str(sock),str(cache),str(audit)],env=env)
                     for _ in range(100):
                         if sock.exists(): break
