@@ -24,9 +24,12 @@ def main() -> None:
     if not shutil.which("useradd") or not shutil.which("userdel"):
         raise SystemExit("useradd/userdel are required")
     name = f"agbtest-{os.getpid()}"
+    outsider = f"agboutsider-{os.getpid()}"
     subprocess.run(["useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", name], check=True)
+    subprocess.run(["useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", outsider], check=True)
     try:
         account = pwd.getpwnam(name)
+        outsider_account = pwd.getpwnam(outsider)
         root = Path(__file__).resolve().parents[1]
         binary = root / "target/debug/agb-admin-server"
         if not binary.exists():
@@ -63,12 +66,16 @@ def main() -> None:
                 records = [json.loads(line) for line in audit.read_text().splitlines() if line.strip()]
                 if not records or records[-1].get("operator", "").find(f"uid:{account.pw_uid}:gid:{account.pw_gid}") < 0:
                     raise SystemExit("audit log does not identify the dedicated peer")
-                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "response": response, "audit_exists": True, "audit_records": len(records), "last_audit": records[-1]}, indent=2))
+                outsider_response = json.loads(subprocess.check_output(["runuser", "-u", outsider, "--", "python3", str(lab_client), str(sock), "lab-token"], text=True))
+                if outsider_response.get("reason") != "peer-not-allowlisted":
+                    raise SystemExit(f"outsider was not rejected: {outsider_response}")
+                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "response": response, "outsider_uid": outsider_account.pw_uid, "outsider_gid": outsider_account.pw_gid, "outsider_response": outsider_response, "audit_exists": True, "audit_records": len(records), "last_audit": records[-1]}, indent=2))
             finally:
                 process.terminate()
                 process.wait(timeout=5)
     finally:
         subprocess.run(["userdel", name], check=True)
+        subprocess.run(["userdel", outsider], check=True)
 
 
 if __name__ == "__main__":
