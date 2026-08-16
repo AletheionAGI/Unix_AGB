@@ -60,7 +60,10 @@ def main() -> None:
                 audit = base / "audit"
                 if not audit.exists():
                     raise SystemExit("admin server did not create audit log")
-                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "response": response, "audit_exists": True}, indent=2))
+                records = [json.loads(line) for line in audit.read_text().splitlines() if line.strip()]
+                if not records or records[-1].get("operator", "").find(f"uid:{account.pw_uid}:gid:{account.pw_gid}") < 0:
+                    raise SystemExit("audit log does not identify the dedicated peer")
+                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "response": response, "audit_exists": True, "audit_records": len(records), "last_audit": records[-1]}, indent=2))
             finally:
                 process.terminate()
                 process.wait(timeout=5)
