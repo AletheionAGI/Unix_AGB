@@ -91,6 +91,54 @@ telemetry from external programs?”, mapping `yes` to `system-wide` and `no` to
 `protected-only`. Advanced configuration may then select `allowlist`. Refusal
 must not be treated as an error or silently overridden.
 
+Telemetry consent is not behavioral authorization. Observing an external
+program does not grant that program permission to transmit local data. During
+first-run setup, the application must therefore present a second, independent
+policy step. The user chooses which behavior classes are accepted, globally or
+for an exact application identity:
+
+```toml
+[data_policy]
+local_file_read = "allow"              # allow | ask | deny
+external_network = "ask"               # allow | ask | deny
+local_file_content_egress = "deny"     # allow | ask | deny
+derived_file_content_egress = "deny"   # allow | ask | deny
+
+# A narrower application rule may reduce, but must not silently broaden, the
+# global policy without explicit user confirmation.
+[[data_policy.application]]
+executable = "/snap/code/257/usr/share/code/code"
+local_file_read = "allow"
+external_network = "ask"
+local_file_content_egress = "deny"
+derived_file_content_egress = "deny"
+allowed_destinations = []
+```
+
+The first-run UI must explain these choices in plain language and require an
+explicit answer for each class. The safe initial profile permits local reads,
+asks before unrelated external network access, and denies transmission of file
+content or content derived from files. `ask` is fail-closed until an answer is
+recorded. Consent records include policy revision, timestamp, application
+identity, destinations and expiry; they are editable and revocable later.
+
+Evaluation is operation-specific rather than a single reputation label:
+
+- a permitted local read is benign for the local-read policy;
+- a network event with no demonstrated relationship to a read is inconclusive
+  for exfiltration and is evaluated separately against the network policy;
+- authorized transmission is allowed and audited;
+- read-then-send without sufficient causal evidence is suspicious and must not
+  be described as proven exfiltration;
+- content, or a tracked derivative of it, sent without authorization is a
+  policy violation and may be classified malicious.
+
+Consequently, marking a `file.open` trajectory benign never grants egress
+permission. A strong exfiltration finding requires a causal chain from process
+identity through file read and outbound send, including destination and policy
+revision. With encrypted traffic and no pre-encryption instrumentation, the
+system may report risk but must not claim that a particular file was sent.
+
 Coverage changes what can be diagnosed, not the truth definition of a label.
 Activity outside the selected scope is **not observed**; it is never inferred to
 be benign, malicious, allowed, or safe. External telemetry must also remain in
@@ -152,6 +200,11 @@ and their time window. Desktop notifications are emitted for new negative decisi
 only, are grouped and rate-limited, and expose no sensitive resource path on the
 lock screen by default. Notification delivery is informational and never part of
 the enforcement success path.
+
+The same GUI owns the first-run consent flow described above, but applies
+changes through an authenticated policy interface. Review screens display the
+specific policy dimension being labeled (for example, local read or content
+egress), so a benign read cannot be mistaken for approval to transmit data.
 
 ## Production direction
 

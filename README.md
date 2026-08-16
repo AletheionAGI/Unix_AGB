@@ -150,6 +150,14 @@ Protected candidates use `security-efficacy`; external candidates use
 only the former can contribute to Gate 2 promotion. Existing valid reviews are
 preserved when `make build-review-queue` regenerates a queue.
 
+Telemetry coverage is separate from data-use permission. A future first-run
+flow will let the user independently allow, ask, or deny local file reads,
+external networking, file-content egress, and derived-content egress, with
+optional per-application and destination rules. Until that enforcement exists,
+a benign `file.open` review means only that the observed local read is allowed;
+it never authorizes transmission. The normative design is documented in
+`docs/persistence.md`.
+
 Candidate construction divides long process histories into contiguous windows
 of at most 256 events (`AGB_MAX_TRAJECTORY_EVENTS`). Derived sequences restart
 at one, while `provenance.source_sequence` preserves the canonical source

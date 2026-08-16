@@ -75,6 +75,10 @@ Still outstanding:
 - production observer and non-cooperative system-wide enforcement;
 - explicit telemetry-consent configuration with `system-wide`, `protected-only`,
   and executable/service/cgroup `allowlist` scopes;
+- first-run, revocable data-use policy for local reads, external networking,
+  file-content egress, derived-content egress, destinations, and per-application
+  exceptions; `ask` must fail closed and a benign read must never authorize
+  transmission;
 - propagation of effective coverage and its configuration digest into captures,
   frozen manifests, reports, audits, and the operator GUI;
 - Gate 2 state runtime, Gate 3 policy engine, and Gates 5–7 deliverables.
