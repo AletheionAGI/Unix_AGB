@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns
+.PHONY: test test-python test-rust generate benchmark causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix
 
 test: test-python test-rust
 
@@ -57,3 +57,7 @@ identity-probe:
 admin-userns:
 	cargo build --quiet --bin agb-admin-server
 	python3 scripts/test_admin_user_namespace.py
+
+uid-gid-matrix:
+	cargo build --quiet --bin agb-admin-server
+	python3 scripts/test_admin_uid_gid_matrix.py
