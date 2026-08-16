@@ -14,7 +14,7 @@ production observer or system-wide enforcement service exists yet.
 | 0 | Architecture, licensing, contracts, threat model, benchmark plan | Complete |
 | 1 | Ubuntu observer and canonical event pipeline | Prototype |
 | 2 | ASM-CM state runtime and persistence | Promoted controlled-lab prototype |
-| 3 | Explicit policy engine and dry-run decisions | Not started |
+| 3 | Explicit policy engine and dry-run decisions | Deny-only dry-run prototype |
 | 4 | Narrow deterministic enforcement pilot | Laboratory prototype |
 | 5 | AI-agent capability broker | Not started |
 | 6 | Ubuntu-derived developer preview | Not started |
@@ -141,6 +141,17 @@ syscall enforcement; Gate 3 must compile deterministic decisions for the hot pat
 - test restart, corruption, replay, PID reuse, and cross-namespace isolation.
 
 ## Gate 3 — policy engine
+
+The first Gate 3 slice is implemented in dry-run mode. It validates event/state
+contracts and exact revisions, applies static restriction invariants, converts
+incomplete or low-confidence state to fail-closed `ABSTAIN`, audits before cache
+compilation, and persists an authenticated, atomic, expiring deny-only cache.
+Shadow `ALLOW` is deliberately not compiled, so model state cannot expand
+privilege. Restart, corruption, expiry, rollback, stale revision, and namespace
+isolation are covered by Rust tests. Two release microbenchmark runs measured
+isolated in-process cache hits at 65 ns p50, 66–113 ns p95, and 83–114 ns p99
+over 100.000 iterations each; this excludes IPC and enforcement overhead. See
+report 80.
 
 - encode non-negotiable static invariants;
 - map state and authorized canonical evidence into risk bands;

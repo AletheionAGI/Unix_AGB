@@ -22,6 +22,8 @@ remains authoritative in `ROADMAP.md`.
   frozen Gate 2 promotion criterion, with explicit controlled-lab limitations.
 - report 79: snapshot-v4 vectorized query optimization with CPU equivalence and
   RTX 4090 confirmation, reducing protected-query p50 by approximately 22×.
+- report 80: Gate 3 dry-run invariants, authenticated deny-only cache,
+  restart/corruption tests, and isolated release lookup measurements.
 
 ## Administrative boundary
 
@@ -41,7 +43,8 @@ remains authoritative in `ROADMAP.md`.
   they do not promote an entire Gate or establish production readiness.
 - Gate 2 is promoted as a controlled-laboratory research prototype. This does
   not establish unknown-attack generalization, production latency, or a safe
-  enforcement policy. Gate 3 policy evaluation remains unimplemented.
+  enforcement policy. Gate 3 now has a deny-only dry-run prototype; it is not
+  connected to a Gate 4 enforcement backend.
 
 New work should update this index when it changes the current interpretation;
 small chronological reports may still be retained for reproducibility.

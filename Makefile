@@ -105,6 +105,21 @@ protected-corpus-lab:
 		--duration "$${AGB_PROTECTED_LAB_DURATION:-25}" \
 		--cases-per-class "$${AGB_PROTECTED_LAB_CASES:-30}"
 
+gate3-dry-run:
+	cargo build --quiet --bin agb-policy-dry-run
+	AGB_GATE3_POLICY_REVISION="$${AGB_GATE3_POLICY_REVISION:?set AGB_GATE3_POLICY_REVISION}" \
+	AGB_GATE3_CACHE_KEY="$${AGB_GATE3_CACHE_KEY:?set AGB_GATE3_CACHE_KEY}" \
+	AGB_GATE3_MIN_CONFIDENCE="$${AGB_GATE3_MIN_CONFIDENCE:-0.8}" \
+	AGB_GATE3_TTL_SECONDS="$${AGB_GATE3_TTL_SECONDS:-2}" \
+	target/debug/agb-policy-dry-run \
+		"$${AGB_GATE3_AUDIT:-var/gate3-decisions.jsonl}" \
+		"$${AGB_GATE3_CACHE:-var/gate3-cache.json}" \
+		< "$${AGB_GATE3_INPUT:?set AGB_GATE3_INPUT}"
+
+benchmark-gate3-cache:
+	cargo run --quiet --release --bin agb-gate3-cache-benchmark -- \
+		"$${AGB_GATE3_BENCHMARK_ITERATIONS:-100000}"
+
 causal-proof:
 	cargo run --quiet --bin agb-causal-proof
 

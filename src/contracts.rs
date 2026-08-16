@@ -165,6 +165,40 @@ pub struct SecurityStateSummary {
     pub updated_at: String,
 }
 
+impl SecurityStateSummary {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != SCHEMA_VERSION || self.namespace_id.is_empty() {
+            return Err("invalid state identity or schema version".into());
+        }
+        if self.state_revision == 0 {
+            return Err("state_revision must be positive".into());
+        }
+        if !matches!(
+            self.risk_band.as_str(),
+            "unknown" | "normal" | "monitor" | "elevated" | "restricted" | "quarantined"
+        ) {
+            return Err("unsupported risk band".into());
+        }
+        if self
+            .confidence
+            .is_some_and(|value| !(0.0..=1.0).contains(&value))
+        {
+            return Err("state confidence must be between zero and one".into());
+        }
+        if !matches!(self.engine.as_str(), "fake" | "asm-cm") {
+            return Err("unsupported state engine".into());
+        }
+        if !all_unique(&self.signals)
+            || !all_unique(&self.evidence_ids)
+            || self.signals.iter().any(|value| value.len() > 128)
+            || self.evidence_ids.iter().any(|value| value.len() > 128)
+        {
+            return Err("invalid state signals or evidence".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PolicyDecision {
     pub schema_version: String,
@@ -180,6 +214,48 @@ pub struct PolicyDecision {
     pub fail_closed: bool,
     pub created_at: String,
     pub expires_at: Option<String>,
+}
+
+impl PolicyDecision {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != SCHEMA_VERSION
+            || !valid_prefixed_id(&self.decision_id, "dec:", 128)
+            || self.namespace_id.is_empty()
+            || self.namespace_id.len() > 512
+            || self.policy_revision.is_empty()
+            || self.policy_revision.len() > 128
+        {
+            return Err("invalid policy decision identity".into());
+        }
+        if !matches!(self.mode.as_str(), "audit" | "enforce") {
+            return Err("unsupported policy mode".into());
+        }
+        if !matches!(
+            self.effect.as_str(),
+            "ALLOW"
+                | "DENY"
+                | "AUDIT"
+                | "LIMIT"
+                | "CHALLENGE"
+                | "FREEZE"
+                | "QUARANTINE"
+                | "KILL"
+                | "ABSTAIN"
+        ) {
+            return Err("unsupported policy effect".into());
+        }
+        if self.scope.is_empty()
+            || self.scope.len() > 128
+            || self.reason_codes.is_empty()
+            || !all_unique(&self.reason_codes)
+            || !all_unique(&self.evidence_ids)
+            || self.reason_codes.iter().any(|value| value.len() > 128)
+            || self.evidence_ids.iter().any(|value| value.len() > 128)
+        {
+            return Err("invalid decision scope, reasons, or evidence".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

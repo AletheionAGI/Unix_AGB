@@ -28,6 +28,16 @@ A versioned dry-run or enforceable decision with explicit reason codes and
 evidence IDs. Gate 0 always sets `mode: "audit"`; `ALLOW` and `DENY` are shadow
 outcomes for comparison and are never evidence that host enforcement occurred.
 
+## CompiledDecision
+
+A deterministic, expiring cache record derived from an audited policy decision.
+Its key binds the exact namespace, operation, and canonical resource digest. It
+also binds policy and state revisions plus an evidence digest. The first Gate 3
+slice compiles only `DENY`; `ALLOW` remains a shadow result and permission comes
+from the deterministic base policy. `ABSTAIN` remains an explicit miss/fallback
+outcome. Gate 3 snapshots authenticate the ordered record set and policy revision
+with HMAC.
+
 ## EnforcementRecord
 
 Records what an adapter actually applied. The default Gateway path uses backend

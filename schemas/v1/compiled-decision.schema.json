@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unixagb.com/schemas/v1/compiled-decision.schema.json",
+  "title": "CompiledDecision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cache_key", "decision_id", "namespace_id", "operation", "resource_sha256", "effect", "policy_revision", "state_revision", "evidence_sha256", "expires_epoch"],
+  "properties": {
+    "cache_key": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "decision_id": { "type": "string", "pattern": "^dec:[A-Za-z0-9._-]+$", "maxLength": 128 },
+    "namespace_id": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "operation": { "enum": ["process.exec", "process.exit", "file.open", "network.connect", "identity.change"] },
+    "resource_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "effect": { "const": "DENY" },
+    "policy_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "state_revision": { "type": "integer", "minimum": 1 },
+    "evidence_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "expires_epoch": { "type": "integer", "minimum": 1 }
+  }
+}
