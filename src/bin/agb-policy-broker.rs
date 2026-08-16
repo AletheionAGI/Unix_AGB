@@ -240,7 +240,13 @@ fn main() -> Result<(), String> {
                 let _ = compact.write_all(b"\n");
             }
             let _ = compact.flush();
-            let _ = std::fs::rename(&compact_path, &cache_path);
+            if compact.sync_all().is_ok() && std::fs::rename(&compact_path, &cache_path).is_ok() {
+                if let Some(parent) = PathBuf::from(&cache_path).parent() {
+                    if let Ok(directory) = std::fs::File::open(parent) {
+                        let _ = directory.sync_all();
+                    }
+                }
+            }
         }
     }
     let mut broker = Broker {
