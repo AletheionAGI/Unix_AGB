@@ -57,6 +57,7 @@ def main() -> None:
                     if process.poll() is not None:
                         raise SystemExit("dedicated admin server exited before socket creation")
                     time.sleep(0.02)
+                sock.chmod(0o666)
                 response = json.loads(subprocess.check_output(["runuser", "-u", name, "--", "python3", str(lab_client), str(sock), "lab-token"], text=True))
                 if response.get("reason") != "admin-ok":
                     raise SystemExit(f"dedicated admin request rejected: {response}")
