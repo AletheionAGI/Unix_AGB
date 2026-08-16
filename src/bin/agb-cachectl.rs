@@ -2,12 +2,15 @@ use std::env;
 use std::path::PathBuf;
 
 fn authorize() -> Result<(), String> {
-    if env::var("AGB_ADMIN_TOKEN")
-        .ok()
-        .filter(|value| !value.is_empty())
-        .is_none()
-    {
-        return Err("AGB_ADMIN_TOKEN is required".into());
+    let token = env::var("AGB_ADMIN_TOKEN").map_err(|_| "AGB_ADMIN_TOKEN is required")?;
+    if token.is_empty() {
+        return Err("AGB_ADMIN_TOKEN is empty".into());
+    }
+    if let Ok(path) = env::var("AGB_ADMIN_TOKEN_FILE") {
+        let expected = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        if token.trim_end() != expected.trim_end() {
+            return Err("invalid admin token".into());
+        }
     }
     Ok(())
 }
