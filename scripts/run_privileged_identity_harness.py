@@ -11,6 +11,8 @@ import json
 import os
 import pwd
 import shutil
+import socket
+import time
 import subprocess
 import tempfile
 from pathlib import Path
@@ -42,11 +44,23 @@ def main() -> None:
             command = ["runuser", "-u", name, "--", str(lab_binary), str(base / "admin.sock"), str(base / "cache"), str(base / "audit")]
             process = subprocess.Popen(command, env=env)
             try:
-                subprocess.run(["python3", str(root / "scripts/test_admin_uid_gid_matrix.py")], cwd=root, env=env, check=True)
+                sock = base / "admin.sock"
+                for _ in range(100):
+                    if sock.exists():
+                        break
+                    if process.poll() is not None:
+                        raise SystemExit("dedicated admin server exited before socket creation")
+                    time.sleep(0.02)
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(str(sock))
+                    client.sendall((json.dumps({"token": "lab-token", "operation": "list", "operator": "lab"}) + "\n").encode())
+                    response = json.loads(client.makefile("rb").readline())
+                if response.get("reason") != "admin-ok":
+                    raise SystemExit(f"dedicated admin request rejected: {response}")
                 audit = base / "audit"
                 if not audit.exists():
                     raise SystemExit("admin server did not create audit log")
-                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "audit_exists": True}, indent=2))
+                print(json.dumps({"status": "passed", "uid": account.pw_uid, "gid": account.pw_gid, "response": response, "audit_exists": True}, indent=2))
             finally:
                 process.terminate()
                 process.wait(timeout=5)
