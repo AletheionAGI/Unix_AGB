@@ -5,9 +5,12 @@ After=local-fs.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/unix-agb
-ExecStart=/opt/unix-agb/target/release/agb-policy-broker /run/unix-agb/policy.sock /var/lib/unix-agb/enforcement.jsonl
+EnvironmentFile=/etc/unix-agb/policy-broker.env
+# policy-broker.env must contain a high-entropy AGB_CACHE_KEY.
+ExecStart=/opt/unix-agb/target/release/agb-policy-broker /run/unix-agb/policy.sock /var/lib/unix-agb/enforcement.jsonl /var/lib/unix-agb/policy-cache.jsonl
 Restart=on-failure
 RestartSec=1s
+UMask=0077
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict

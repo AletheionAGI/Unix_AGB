@@ -27,6 +27,9 @@ impl CanonicalStore {
                 }
                 let event: SecurityEvent = serde_json::from_str(&line)
                     .map_err(|e| format!("invalid canonical record at line {}: {e}", index + 1))?;
+                event
+                    .validate()
+                    .map_err(|e| format!("invalid canonical record at line {}: {e}", index + 1))?;
                 store.index(&event)?;
             }
         }
@@ -34,7 +37,7 @@ impl CanonicalStore {
     }
 
     fn index(&mut self, event: &SecurityEvent) -> Result<(), String> {
-        if !self.seen_ids.insert(event.event_id.clone()) {
+        if self.seen_ids.contains(&event.event_id) {
             return Err(format!("duplicate event_id: {}", event.event_id));
         }
         if let Some(last) = self.last_sequence.get(&event.namespace_id) {
@@ -45,24 +48,43 @@ impl CanonicalStore {
                 ));
             }
         }
+        self.seen_ids.insert(event.event_id.clone());
         self.last_sequence
             .insert(event.namespace_id.clone(), event.sequence);
         Ok(())
     }
 
+    fn check_index(&self, event: &SecurityEvent) -> Result<(), String> {
+        if self.seen_ids.contains(&event.event_id) {
+            return Err(format!("duplicate event_id: {}", event.event_id));
+        }
+        if let Some(last) = self.last_sequence.get(&event.namespace_id) {
+            if event.sequence <= *last {
+                return Err(format!(
+                    "sequence replay for {}: {} <= {}",
+                    event.namespace_id, event.sequence, last
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn append(&mut self, event: &SecurityEvent) -> Result<(), String> {
         event.validate()?;
-        self.index(event)?;
+        self.check_index(event)?;
         let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let encoded = serde_json::to_vec(event).map_err(|e| e.to_string())?;
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.path)
             .map_err(|e| e.to_string())?;
-        serde_json::to_writer(&mut file, event).map_err(|e| e.to_string())?;
+        file.write_all(&encoded).map_err(|e| e.to_string())?;
         file.write_all(b"\n").map_err(|e| e.to_string())?;
         file.flush().map_err(|e| e.to_string())?;
+        file.sync_data().map_err(|e| e.to_string())?;
+        self.index(event)?;
         Ok(())
     }
 
@@ -109,5 +131,18 @@ mod tests {
         store.append(&sample_event("evt:a", 1, 7, 100)).unwrap();
         store.append(&sample_event("evt:b", 1, 7, 200)).unwrap();
         assert_eq!(store.namespace_count(), 2);
+    }
+
+    #[test]
+    fn failed_append_does_not_poison_in_memory_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.jsonl");
+        let mut store = CanonicalStore::open(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        let event = sample_event("evt:retry", 1, 7, 100);
+        assert!(store.append(&event).is_err());
+        std::fs::remove_dir(&path).unwrap();
+        store.append(&event).unwrap();
+        assert_eq!(store.event_count(), 1);
     }
 }

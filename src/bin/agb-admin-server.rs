@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::io::AsRawFd;
@@ -63,14 +63,23 @@ fn peer_allowed(credentials: Option<libc::ucred>) -> bool {
     configured || env::var("AGB_ADMIN_FAIL_CLOSED_CONFIG").ok().as_deref() != Some("1")
 }
 
+fn admin_token() -> String {
+    env::var("AGB_ADMIN_TOKEN_FILE")
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|token| token.trim_end().to_owned())
+        .or_else(|| env::var("AGB_ADMIN_TOKEN").ok())
+        .unwrap_or_default()
+}
+
 fn handle(
     mut stream: UnixStream,
     cache: &PathBuf,
     audit: &PathBuf,
-    requests: &mut VecDeque<Instant>,
+    requests: &mut HashMap<String, VecDeque<Instant>>,
 ) {
-    let authorization_revision = env::var("AGB_ADMIN_AUTHZ_REVISION")
-        .unwrap_or_else(|_| "default-v1".into());
+    let authorization_revision =
+        env::var("AGB_ADMIN_AUTHZ_REVISION").unwrap_or_else(|_| "default-v1".into());
     let line = BufReader::new(stream.try_clone().unwrap())
         .lines()
         .next()
@@ -86,21 +95,22 @@ fn handle(
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(60);
-    while requests
+    let peer_requests = requests.entry(peer.clone()).or_default();
+    while peer_requests
         .front()
         .is_some_and(|time| now.duration_since(*time) > Duration::from_secs(rate_window))
     {
-        requests.pop_front();
+        peer_requests.pop_front();
     }
     let operator = peer.clone();
     let response = if !peer_allowed(credentials) {
         Response {
             ok: false,
             reason: "peer-not-allowlisted".into(),
-            operator: peer,
+            operator: peer.clone(),
             authorization_revision: authorization_revision.clone(),
         }
-    } else if requests.len() >= 5 {
+    } else if peer_requests.len() >= 5 {
         Response {
             ok: false,
             reason: "rate-limit".into(),
@@ -108,8 +118,8 @@ fn handle(
             authorization_revision: authorization_revision.clone(),
         }
     } else {
-        requests.push_back(now);
-        let expected = env::var("AGB_ADMIN_TOKEN").unwrap_or_default();
+        peer_requests.push_back(now);
+        let expected = admin_token();
         match request {
             Ok(request) if !expected.is_empty() && request.token == expected => {
                 let result = match request.operation.as_str() {
@@ -140,16 +150,34 @@ fn handle(
             },
         }
     };
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(audit)
-    {
-        let _ = serde_json::to_writer(&mut file, &response);
-        let _ = file.write_all(b"\n");
-    }
+    let audit_result = (|| -> Result<(), String> {
+        if let Some(parent) = audit.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(audit)
+            .map_err(|e| e.to_string())?;
+        serde_json::to_writer(&mut file, &response).map_err(|e| e.to_string())?;
+        file.write_all(b"\n").map_err(|e| e.to_string())?;
+        file.flush().map_err(|e| e.to_string())?;
+        file.sync_data().map_err(|e| e.to_string())
+    })();
+    let response = if audit_result.is_ok() {
+        response
+    } else {
+        Response {
+            ok: false,
+            reason: "audit-persistence-unavailable".into(),
+            operator: peer,
+            authorization_revision: env::var("AGB_ADMIN_AUTHZ_REVISION")
+                .unwrap_or_else(|_| "default-v1".into()),
+        }
+    };
     let _ = serde_json::to_writer(&mut stream, &response);
     let _ = stream.write_all(b"\n");
+    let _ = stream.flush();
 }
 
 fn main() -> Result<(), String> {
@@ -175,7 +203,16 @@ fn main() -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let listener = UnixListener::bind(&socket).map_err(|e| e.to_string())?;
-    let mut requests = VecDeque::new();
+    if let Some(parent) = audit.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&audit)
+        .and_then(|file| file.sync_data())
+        .map_err(|e| format!("admin audit unavailable: {e}"))?;
+    let mut requests = HashMap::new();
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             handle(stream, &cache, &audit, &mut requests);

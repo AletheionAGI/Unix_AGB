@@ -10,11 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 class ContractFixtureTests(unittest.TestCase):
     def test_all_schema_documents_are_valid_json(self) -> None:
         schemas = list((ROOT / "schemas").rglob("*.json"))
-        self.assertEqual(len(schemas), 4)
+        self.assertGreaterEqual(len(schemas), 4)
+        schema_ids: set[str] = set()
         for path in schemas:
             document = json.loads(path.read_text())
             self.assertEqual(document["$schema"], "https://json-schema.org/draft/2020-12/schema")
             self.assertFalse(document.get("additionalProperties", True))
+            if "$id" in document:
+                self.assertNotIn(document["$id"], schema_ids)
+                schema_ids.add(document["$id"])
 
     def test_event_fixtures_respect_gate_zero_invariants(self) -> None:
         for path in (ROOT / "fixtures" / "events").glob("*.jsonl"):

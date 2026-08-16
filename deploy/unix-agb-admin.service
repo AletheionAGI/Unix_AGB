@@ -6,10 +6,11 @@ After=local-fs.target
 Type=simple
 WorkingDirectory=/opt/unix-agb
 EnvironmentFile=-/etc/unix-agb/admin.env
-# Example admin.env: AGB_ADMIN_TOKEN=...; AGB_ADMIN_UIDS=1000; AGB_ADMIN_GIDS=1000
+# Prefer AGB_ADMIN_TOKEN_FILE=/etc/unix-agb/admin.token and configure UID/GID allowlists.
 ExecStart=/opt/unix-agb/target/release/agb-admin-server /run/unix-agb/admin.sock /var/lib/unix-agb/policy-cache.jsonl /var/log/unix-agb/admin-audit.jsonl
 Restart=on-failure
 RestartSec=1s
+UMask=0077
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict

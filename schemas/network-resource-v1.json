@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unixagb.com/schemas/v1/network-resource.schema.json",
+  "title": "NetworkResource",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "family"],
+  "properties": {
+    "type": { "const": "network" },
+    "family": { "enum": ["inet", "inet6", "unix"] },
+    "address": { "type": "string", "maxLength": 255 },
+    "port": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "protocol": { "const": "tcp" }
+  }
+}

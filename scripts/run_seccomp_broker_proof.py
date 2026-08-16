@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import array
+import ipaddress
 import ctypes
 import errno
 import fcntl
@@ -319,3 +320,20 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+MAX_SOCKADDR = 128
+
+def parse_sockaddr(data: bytes) -> dict[str, object]:
+    if len(data) < 2 or len(data) > MAX_SOCKADDR:
+        raise ValueError("invalid sockaddr length")
+    family = int.from_bytes(data[:2], "little")
+    if family == socket.AF_INET:
+        if len(data) < 16: raise ValueError("truncated AF_INET sockaddr")
+        return {"type":"network","family":"inet","protocol":"tcp","address":str(ipaddress.ip_address(data[4:8])),"port":int.from_bytes(data[2:4],"big")}
+    if family == socket.AF_INET6:
+        if len(data) < 28: raise ValueError("truncated AF_INET6 sockaddr")
+        return {"type":"network","family":"inet6","protocol":"tcp","address":str(ipaddress.ip_address(data[8:24])),"port":int.from_bytes(data[2:4],"big")}
+    if family == socket.AF_UNIX:
+        path=data[2:].split(b"\0",1)[0]
+        if not path: raise ValueError("empty AF_UNIX path")
+        return {"type":"network","family":"unix","address":path.decode("utf-8","strict")}
+    raise ValueError("unsupported sockaddr family")

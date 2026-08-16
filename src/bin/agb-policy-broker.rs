@@ -1,6 +1,5 @@
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
@@ -51,7 +50,7 @@ struct PersistedCache {
     checksum: String,
 }
 
-fn cache_checksum(key: &str, effect: &str, revision: &str, expires: u64) -> String {
+fn cache_checksum(key: &str, effect: &str, revision: &str, expires: u64) -> Option<String> {
     let mut payload = Vec::new();
     payload.extend_from_slice(key.as_bytes());
     payload.push(0);
@@ -60,13 +59,13 @@ fn cache_checksum(key: &str, effect: &str, revision: &str, expires: u64) -> Stri
     payload.extend_from_slice(revision.as_bytes());
     payload.push(0);
     payload.extend_from_slice(&expires.to_le_bytes());
-    if let Ok(secret) = std::env::var("AGB_CACHE_KEY") {
-        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts keys");
-        mac.update(&payload);
-        format!("hmac-sha256:{:x}", mac.finalize().into_bytes())
-    } else {
-        format!("sha256:{:x}", Sha256::digest(&payload))
-    }
+    let secret = std::env::var("AGB_CACHE_KEY")
+        .ok()
+        .filter(|key| !key.is_empty())?;
+    let mut mac =
+        Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts keys");
+    mac.update(&payload);
+    Some(format!("hmac-sha256:{:x}", mac.finalize().into_bytes()))
 }
 
 struct Broker {
@@ -76,16 +75,25 @@ struct Broker {
     cache_path: PathBuf,
 }
 
+fn admin_token() -> String {
+    std::env::var("AGB_ADMIN_TOKEN_FILE")
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|token| token.trim_end().to_owned())
+        .or_else(|| std::env::var("AGB_ADMIN_TOKEN").ok())
+        .unwrap_or_default()
+}
+
 impl Broker {
     fn decide(&mut self, request: Result<Request, serde_json::Error>) -> Response {
         let request = match request {
             Ok(request) => request,
-            _ => return Self::fallback("invalid request"),
+            _ => return self.record(Self::fallback("invalid request")),
         };
         if request.request_type.as_deref() == Some("admin") {
-            let expected = std::env::var("AGB_ADMIN_TOKEN").unwrap_or_default();
+            let expected = admin_token();
             if expected.is_empty() || request.token.as_deref() != Some(expected.as_str()) {
-                return Self::fallback("invalid admin token");
+                return self.record(Self::fallback("invalid admin token"));
             }
             return match request.operation.as_deref() {
                 Some("list") => self.record(Response {
@@ -122,11 +130,11 @@ impl Broker {
                         .into(),
                     })
                 }
-                _ => Self::fallback("unsupported admin operation"),
+                _ => self.record(Self::fallback("unsupported admin operation")),
             };
         }
         if request.namespace_id.is_empty() || request.resource.is_empty() {
-            return Self::fallback("invalid request");
+            return self.record(Self::fallback("invalid request"));
         }
         if request.request_type.as_deref() == Some("health") {
             return self.record(Response {
@@ -159,39 +167,36 @@ impl Broker {
         let effect = match request.requested_effect.as_str() {
             "ALLOW" => "ALLOW",
             "DENY" => "DENY",
-            _ => return Self::fallback("unsupported requested effect"),
+            _ => return self.record(Self::fallback("unsupported requested effect")),
         };
+        let expires_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            + self.ttl.as_secs();
+        if let Some(checksum) =
+            cache_checksum(&key, effect, &request.policy_revision, expires_epoch)
+        {
+            let persisted = PersistedCache {
+                format_version: 1,
+                key: key.clone(),
+                effect: effect.into(),
+                policy_revision: request.policy_revision.clone(),
+                expires_epoch,
+                checksum,
+            };
+            if persist_line(&self.cache_path, &persisted).is_err() {
+                return self.record(Self::fallback("cache persistence unavailable"));
+            }
+        }
         self.cache.insert(
-            key.clone(),
+            key,
             Cached {
                 effect: effect.into(),
                 policy_revision: request.policy_revision.clone(),
                 expires: Instant::now() + self.ttl,
             },
         );
-        let expires_epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-            + self.ttl.as_secs();
-        if let Ok(mut file) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.cache_path)
-        {
-            let _ = serde_json::to_writer(
-                &mut file,
-                &PersistedCache {
-                    format_version: 1,
-                    key: key.clone(),
-                    effect: effect.into(),
-                    policy_revision: request.policy_revision.clone(),
-                    expires_epoch,
-                    checksum: cache_checksum(&key, effect, &request.policy_revision, expires_epoch),
-                },
-            );
-            let _ = file.write_all(b"\n");
-        }
         self.record(Response {
             schema_version: "1.0",
             effect: effect.into(),
@@ -217,17 +222,33 @@ impl Broker {
         }
     }
 
-    fn record(&self, response: Response) -> Response {
-        if let Ok(mut file) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.audit_path)
-        {
-            let _ = serde_json::to_writer(&mut file, &response);
-            let _ = file.write_all(b"\n");
+    fn record(&self, mut response: Response) -> Response {
+        if persist_line(&self.audit_path, &response).is_err() {
+            response.effect = "DENY".into();
+            response.applied = true;
+            response.cache_hit = false;
+            response.fallback = true;
+            response.policy_revision = "policy:fallback-fail-closed".into();
+            response.reason = "audit persistence unavailable".into();
         }
         response
     }
+}
+
+fn persist_line(path: &PathBuf, value: &impl Serialize) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let encoded = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    file.write_all(&encoded).map_err(|e| e.to_string())?;
+    file.write_all(b"\n").map_err(|e| e.to_string())?;
+    file.flush().map_err(|e| e.to_string())?;
+    file.sync_data().map_err(|e| e.to_string())
 }
 
 fn handle(mut stream: UnixStream, broker: &mut Broker) {
@@ -278,13 +299,14 @@ fn main() -> Result<(), String> {
         for line in BufReader::new(file).lines().map_while(Result::ok) {
             if let Ok(entry) = serde_json::from_str::<PersistedCache>(&line) {
                 if entry.format_version == 1
-                    && entry.checksum
+                    && Some(entry.checksum.as_str())
                         == cache_checksum(
                             &entry.key,
                             &entry.effect,
                             &entry.policy_revision,
                             entry.expires_epoch,
                         )
+                        .as_deref()
                     && entry.expires_epoch > now
                 {
                     cache.insert(
@@ -302,48 +324,41 @@ fn main() -> Result<(), String> {
     }
     if !cache.is_empty() {
         let compact_path = format!("{}.compact", cache_path);
-        if let Ok(mut compact) = OpenOptions::new()
+        let mut compact = OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(&compact_path)
-        {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            for (key, entry) in &cache {
-                let persisted = PersistedCache {
-                    format_version: 1,
-                    key: key.clone(),
-                    effect: entry.effect.clone(),
-                    policy_revision: entry.policy_revision.clone(),
-                    expires_epoch: now
-                        + entry
-                            .expires
-                            .saturating_duration_since(Instant::now())
-                            .as_secs(),
-                    checksum: cache_checksum(
-                        key,
-                        &entry.effect,
-                        &entry.policy_revision,
-                        now + entry
-                            .expires
-                            .saturating_duration_since(Instant::now())
-                            .as_secs(),
-                    ),
-                };
-                let _ = serde_json::to_writer(&mut compact, &persisted);
-                let _ = compact.write_all(b"\n");
-            }
-            let _ = compact.flush();
-            if compact.sync_all().is_ok() && std::fs::rename(&compact_path, &cache_path).is_ok() {
-                if let Some(parent) = PathBuf::from(&cache_path).parent() {
-                    if let Ok(directory) = std::fs::File::open(parent) {
-                        let _ = directory.sync_all();
-                    }
-                }
-            }
+            .map_err(|e| format!("cache compaction open failed: {e}"))?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        for (key, entry) in &cache {
+            let expires_epoch = now
+                + entry
+                    .expires
+                    .saturating_duration_since(Instant::now())
+                    .as_secs();
+            let persisted = PersistedCache {
+                format_version: 1,
+                key: key.clone(),
+                effect: entry.effect.clone(),
+                policy_revision: entry.policy_revision.clone(),
+                expires_epoch,
+                checksum: cache_checksum(key, &entry.effect, &entry.policy_revision, expires_epoch)
+                    .ok_or_else(|| "cache key disappeared during compaction".to_string())?,
+            };
+            serde_json::to_writer(&mut compact, &persisted).map_err(|e| e.to_string())?;
+            compact.write_all(b"\n").map_err(|e| e.to_string())?;
+        }
+        compact.flush().map_err(|e| e.to_string())?;
+        compact.sync_all().map_err(|e| e.to_string())?;
+        std::fs::rename(&compact_path, &cache_path).map_err(|e| e.to_string())?;
+        if let Some(parent) = PathBuf::from(&cache_path).parent() {
+            std::fs::File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|e| e.to_string())?;
         }
     }
     let mut broker = Broker {
@@ -360,4 +375,35 @@ fn main() -> Result<(), String> {
     }
     let _ = SystemTime::now().duration_since(UNIX_EPOCH);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_audit_converts_allow_to_fail_closed_denial() {
+        let directory = tempfile::tempdir().unwrap();
+        let audit_path = directory.path().join("audit-as-directory");
+        std::fs::create_dir(&audit_path).unwrap();
+        let broker = Broker {
+            cache: HashMap::new(),
+            ttl: Duration::from_secs(2),
+            audit_path,
+            cache_path: directory.path().join("cache.jsonl"),
+        };
+        let response = broker.record(Response {
+            schema_version: "1.0",
+            effect: "ALLOW".into(),
+            backend: "seccomp-user-notify",
+            applied: true,
+            cache_hit: false,
+            fallback: false,
+            policy_revision: "policy:test".into(),
+            reason: "test".into(),
+        });
+        assert_eq!(response.effect, "DENY");
+        assert!(response.fallback);
+        assert_eq!(response.reason, "audit persistence unavailable");
+    }
 }

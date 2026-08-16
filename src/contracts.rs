@@ -67,7 +67,7 @@ impl SecurityEvent {
         if self.schema_version != SCHEMA_VERSION {
             return Err("unsupported schema_version".into());
         }
-        if !self.event_id.starts_with("evt:") || self.event_id.len() > 128 {
+        if !valid_prefixed_id(&self.event_id, "evt:", 128) {
             return Err("invalid event_id".into());
         }
         if self.sequence == 0 {
@@ -79,8 +79,28 @@ impl SecurityEvent {
         if self.namespace_id != self.expected_process_namespace() {
             return Err("namespace does not match stable process identity".into());
         }
-        if !self.host_id.starts_with("host:") {
+        if !valid_prefixed_id(&self.host_id, "host:", 160) {
             return Err("invalid host_id".into());
+        }
+        if self.namespace_id.len() > 512
+            || self.subject.boot_id.is_empty()
+            || self.subject.boot_id.len() > 128
+            || self.subject.exe.len() > 4096
+            || self.subject.service.as_ref().is_some_and(|v| v.len() > 256)
+            || self
+                .subject
+                .container_id
+                .as_ref()
+                .is_some_and(|v| v.len() > 256)
+            || self
+                .subject
+                .agent_id
+                .as_ref()
+                .is_some_and(|v| v.len() > 256)
+            || self.policy_revision.is_empty()
+            || self.policy_revision.len() > 128
+        {
+            return Err("field length exceeds contract".into());
         }
         if !matches!(
             self.operation.as_str(),
@@ -100,11 +120,35 @@ impl SecurityEvent {
         ) {
             return Err("unsupported provenance source".into());
         }
-        if self.resource.resource_type.is_empty() || self.subject.exe.is_empty() {
+        if self.resource.resource_type.is_empty()
+            || self.resource.resource_type.len() > 64
+            || self.subject.exe.is_empty()
+        {
             return Err("resource type and executable are required".into());
+        }
+        if self.labels.len() > 32
+            || self.labels.iter().any(|label| label.len() > 64)
+            || !all_unique(&self.labels)
+        {
+            return Err("invalid labels".into());
         }
         Ok(())
     }
+}
+
+fn valid_prefixed_id(value: &str, prefix: &str, max_len: usize) -> bool {
+    value.len() <= max_len
+        && value.strip_prefix(prefix).is_some_and(|suffix| {
+            !suffix.is_empty()
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+        })
+}
+
+fn all_unique(values: &[String]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    values.iter().all(|value| seen.insert(value))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -183,5 +227,22 @@ pub fn sample_event(event_id: &str, sequence: u64, pid: u32, start: u64) -> Secu
             source: "synthetic".into(),
             attributes: BTreeMap::new(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_matches_identifier_and_label_contracts() {
+        let mut event = sample_event("evt:valid-1", 1, 10, 20);
+        assert!(event.validate().is_ok());
+        event.event_id = "evt:invalid/value".into();
+        assert_eq!(event.validate().unwrap_err(), "invalid event_id");
+
+        let mut event = sample_event("evt:valid-2", 1, 10, 20);
+        event.labels = vec!["duplicate".into(), "duplicate".into()];
+        assert_eq!(event.validate().unwrap_err(), "invalid labels");
     }
 }

@@ -73,10 +73,11 @@ Completed and documented in `docs/report/03` through `docs/report/46`:
 Still outstanding:
 
 - production observer and non-cooperative system-wide enforcement;
-- shared-group and UID-only variants, including audit persistence and admin
-  server restart, were executed successfully in the privileged harness (see
-  `docs/report/53`);
 - Gate 2 state runtime, Gate 3 policy engine, and Gates 5–7 deliverables.
+
+Completed privileged variants, including shared-group and UID-only execution,
+audit persistence, and admin-server restart, are recorded in
+`docs/report/53_dual_identity_restart_proof_complete_20260815.md`.
 
 ## Gate 2 — ASM-CM state runtime
 
