@@ -198,7 +198,10 @@ def evaluate(engine_factory: Any, trajectories: list[dict[str, Any]]) -> dict[st
                 engine.synchronize()
             elapsed_us = (time.perf_counter_ns() - started) / 1_000
             latencies.append(elapsed_us)
-            is_query = event["operation"] == "file.open" and "credential" in event.get("labels", [])
+            is_query = event["operation"] == "file.open" and bool(
+                {"credential", "persistence-control", "admin-control"}
+                & set(event.get("labels", []))
+            )
             (query_latencies if is_query else ingest_latencies).append(elapsed_us)
             if decision.get("model_inference_performed", False):
                 model_inference_latencies.append(elapsed_us)

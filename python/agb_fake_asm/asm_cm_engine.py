@@ -19,13 +19,15 @@ from pathlib import Path
 from typing import Any
 
 NETWORK_RELATION_KEY = 2
+PERSISTENCE_RELATION_KEY = 3
+ADMIN_RELATION_KEY = 4
 VALUE_OFFSET = 34
 VALUE_CAPACITY = 64
 FILLER_OFFSET = 98
 FILLER_COUNT = 158
 QUERY_TOKEN = 1
 MINIMUM_MQAR_SEQUENCE = 40
-SNAPSHOT_VERSION = 2
+SNAPSHOT_VERSION = 3
 INFERENCE_POLICIES = {"security-relevant", "all-events"}
 
 
@@ -47,7 +49,7 @@ class _Namespace:
     last_sequence: int = 0
     inference_state: Any = None
     next_value: int = VALUE_OFFSET
-    evidence_by_value: dict[int, str] | None = None
+    evidence_by_value: dict[tuple[int, int], str] | None = None
 
     def __post_init__(self) -> None:
         if self.evidence_by_value is None:
@@ -139,11 +141,11 @@ class AsmCmEngine:
                 )
         return state
 
-    def _predict(self, state: Any) -> tuple[int, float]:
+    def _predict(self, state: Any, relation_key: int) -> tuple[int, float]:
         working = copy.deepcopy(state if state is not None else self._initial_state())
         padding_count = max(0, MINIMUM_MQAR_SEQUENCE - 2 - working.tokens_seen)
         padding = [
-            FILLER_OFFSET + ((position * 37 + NETWORK_RELATION_KEY * 11) % FILLER_COUNT)
+            FILLER_OFFSET + ((position * 37 + relation_key * 11) % FILLER_COUNT)
             for position in range(padding_count)
         ]
         working = self._feed(working, padding)
@@ -152,7 +154,7 @@ class AsmCmEngine:
                 self.torch.tensor([QUERY_TOKEN], device=self.device), working
             )
             logits, _ = self.model.decode_step(
-                self.torch.tensor([NETWORK_RELATION_KEY], device=self.device), working
+                self.torch.tensor([relation_key], device=self.device), working
             )
         probabilities = self.torch.softmax(logits.float(), dim=-1)
         confidence, predicted = probabilities.max(dim=-1)
@@ -184,19 +186,33 @@ class AsmCmEngine:
             state.last_sequence = sequence
             state.revision += 1
             operation = event["operation"]
-            sensitive = operation == "file.open" and "credential" in event.get("labels", [])
+            labels = set(event.get("labels", []))
+            query_relation = None
+            if operation == "file.open" and "credential" in labels:
+                query_relation = NETWORK_RELATION_KEY
+            elif operation == "file.open" and "persistence-control" in labels:
+                query_relation = PERSISTENCE_RELATION_KEY
+            elif operation == "file.open" and "admin-control" in labels:
+                query_relation = ADMIN_RELATION_KEY
+            trigger_relation = None
+            if operation == "network.connect" and "trusted-network" not in labels:
+                trigger_relation = NETWORK_RELATION_KEY
+            elif operation == "file.open" and "persistence-origin" in labels:
+                trigger_relation = PERSISTENCE_RELATION_KEY
+            elif operation == "file.open" and "admin-origin" in labels:
+                trigger_relation = ADMIN_RELATION_KEY
             confidence: float | None = None
             selected: str | None = None
             model_inference_performed = False
             reset = operation == "identity.change" and "trusted-reset" in event.get("labels", [])
-            trusted_network = operation == "network.connect" and "trusted-network" in event.get("labels", [])
-            if operation == "network.connect" and not trusted_network:
+            trusted_network = operation == "network.connect" and "trusted-network" in labels
+            if trigger_relation is not None:
                 model_inference_performed = True
                 value = state.next_value
                 state.next_value = VALUE_OFFSET + ((value - VALUE_OFFSET + 1) % VALUE_CAPACITY)
-                state.evidence_by_value[value] = event["event_id"]  # type: ignore[index]
+                state.evidence_by_value[(trigger_relation, value)] = event["event_id"]  # type: ignore[index]
                 state.inference_state = self._feed(
-                    state.inference_state, [NETWORK_RELATION_KEY, value]
+                    state.inference_state, [trigger_relation, value]
                 )
             elif reset or trusted_network:
                 model_inference_performed = True
@@ -207,10 +223,10 @@ class AsmCmEngine:
                 state.inference_state = self._feed(
                     state.inference_state, [NETWORK_RELATION_KEY, safe_value]
                 )
-            elif sensitive:
+            elif query_relation is not None:
                 model_inference_performed = True
-                predicted, confidence = self._predict(state.inference_state)
-                selected = state.evidence_by_value.get(predicted)  # type: ignore[union-attr]
+                predicted, confidence = self._predict(state.inference_state, query_relation)
+                selected = state.evidence_by_value.get((query_relation, predicted))  # type: ignore[union-attr]
             elif self.inference_policy == "all-events":
                 model_inference_performed = True
                 state.inference_state = self._feed(
@@ -221,8 +237,8 @@ class AsmCmEngine:
                 "engine": self.name,
                 "namespace_id": namespace_id,
                 "event_id": event["event_id"],
-                "effect": "DENY" if sensitive and selected else "ALLOW",
-                "reason": "ASM_CM_SELECTED_NETWORK_EVIDENCE" if selected else "NO_SELECTED_NETWORK_EVIDENCE",
+                "effect": "DENY" if query_relation is not None and selected else "ALLOW",
+                "reason": "ASM_CM_SELECTED_CAUSAL_EVIDENCE" if selected else "NO_SELECTED_CAUSAL_EVIDENCE",
                 "evidence_ids": evidence,
                 "confidence": confidence,
                 "state_revision": state.revision,
@@ -329,7 +345,7 @@ class AsmCmEngine:
                 revision=value["revision"],
                 last_sequence=value["last_sequence"],
                 next_value=value["next_value"],
-                evidence_by_value={int(key): item for key, item in value["evidence_by_value"].items()},
+                evidence_by_value={tuple(key): item for key, item in value["evidence_by_value"].items()},
                 inference_state=self._deserialize_inference(value["inference_state"]),
             )
             for namespace_id, value in payload["namespaces"].items()

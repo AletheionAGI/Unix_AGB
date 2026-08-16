@@ -153,11 +153,15 @@ represented by a zero sample count and null percentiles.
 
 The ASM-CM adapter defaults to the versioned `security-relevant` inference
 policy: ordinary events still advance canonical process sequence and audit
-state, but only untrusted network relations, trusted resets/network updates, and
-sensitive queries invoke neural `decode_step`. The legacy `all-events` policy is
-available only for controlled comparison. Snapshot restore rejects a different
-inference policy, preventing state created under one tokenization schedule from
-being silently reused under another.
+state, but only configured causal origins, trusted resets/network updates, and
+protected policy queries invoke neural `decode_step`. Version 3 assigns distinct
+associative keys to network/credential, persistence-origin/persistence-control,
+and admin-origin/admin-control relations. Exact-path labels come from the active,
+hashed collection policy; they identify semantic resources but never encode the
+review label (`benign` or `malicious`). The legacy `all-events` policy is available
+only for controlled comparison. Snapshot restore rejects a different inference
+policy or snapshot version, preventing state created under another tokenization
+schedule from being silently reused.
 
 Consequently, marking a `file.open` trajectory benign never grants egress
 permission. A strong exfiltration finding requires a causal chain from process

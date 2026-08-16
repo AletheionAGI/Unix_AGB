@@ -27,9 +27,16 @@ def main() -> None:
     parser.add_argument("--bpftrace-command", default="bpftrace")
     parser.add_argument("--target-uid", type=int, default=-1)
     parser.add_argument("--sensitive-path", action="append", default=[])
+    parser.add_argument("--path-label", action="append", default=[], metavar="PATH=LABEL")
     args = parser.parse_args()
     if args.target_uid < -1:
         parser.error("--target-uid must be -1 (system-wide) or a non-negative UID")
+    path_labels: dict[str, set[str]] = {}
+    for mapping in args.path_label:
+        path, separator, label = mapping.rpartition("=")
+        if not separator or not path or not label:
+            parser.error("--path-label must be PATH=LABEL")
+        path_labels.setdefault(path, set()).add(label)
     bpftrace_uid = 4294967295 if args.target_uid == -1 else args.target_uid
     root = Path(__file__).resolve().parents[1]
     command = [
@@ -91,7 +98,12 @@ def main() -> None:
                 print(line, end="", file=sys.stderr)
                 continue
             try:
-                event = normalize(line, sequences, sensitive_paths=set(args.sensitive_path))
+                event = normalize(
+                    line,
+                    sequences,
+                    sensitive_paths=set(args.sensitive_path),
+                    path_labels=path_labels,
+                )
             except (KeyError, OSError, ValueError) as error:
                 normalization_errors += 1
                 if normalization_errors <= 5:

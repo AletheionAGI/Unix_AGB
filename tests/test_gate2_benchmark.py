@@ -161,6 +161,22 @@ class Gate2BenchmarkTests(unittest.TestCase):
         self.assertTrue(network_decision["model_inference_performed"])
         self.assertEqual(len(calls), 1)
 
+        persistence = {**ordinary, "event_id": "event:persistence", "sequence": 3}
+        persistence["labels"] = ["persistence-origin"]
+        persistence_decision = engine.update(persistence)
+        self.assertTrue(persistence_decision["model_inference_performed"])
+        self.assertEqual(calls[-1], [3, 35])
+
+        query = {**ordinary, "event_id": "event:persistence-query", "sequence": 4}
+        query["labels"] = ["persistence-control"]
+        engine._predict = lambda state, relation: (35, 0.99)
+        query_decision = engine.update(query)
+        self.assertEqual(query_decision["effect"], "DENY")
+        self.assertEqual(
+            query_decision["evidence_ids"],
+            ["event:persistence", "event:persistence-query"],
+        )
+
     def test_adversarial_v2_keeps_strong_sequence_baseline(self) -> None:
         manifest = json.loads(
             (ROOT / "fixtures" / "benchmark" / "gate2-adversarial-v2.json").read_text()

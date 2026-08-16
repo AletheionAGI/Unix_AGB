@@ -102,7 +102,7 @@ protected-corpus-lab:
 	cargo build --quiet --bin agb-lab-workload
 	PYTHONPATH=python:scripts python3 scripts/run_protected_corpus_lab.py \
 		--bpftrace-command "$${AGB_BPFTRACE_COMMAND:-sudo bpftrace}" \
-		--duration "$${AGB_PROTECTED_LAB_DURATION:-15}" \
+		--duration "$${AGB_PROTECTED_LAB_DURATION:-25}" \
 		--cases-per-class "$${AGB_PROTECTED_LAB_CASES:-30}"
 
 causal-proof:

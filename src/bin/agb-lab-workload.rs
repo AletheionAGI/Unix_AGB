@@ -1,6 +1,6 @@
 use serde_json::json;
 use std::env;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, Write};
 use std::net::TcpStream;
 
@@ -76,26 +76,45 @@ fn main() {
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
     let case = value_after(&args, "--case")?;
+    let family = value_after(&args, "--family")?;
     let secret = value_after(&args, "--secret")?;
     let config = value_after(&args, "--config")?;
+    let persistence_origin = value_after(&args, "--persistence-origin")?;
+    let persistence_target = value_after(&args, "--persistence-target")?;
+    let admin_origin = value_after(&args, "--admin-origin")?;
+    let admin_target = value_after(&args, "--admin-target")?;
     let port = value_after(&args, "--port")?
         .parse::<u16>()
         .map_err(|_| "invalid --port".to_string())?;
 
-    match case.as_str() {
-        "benign" => {
+    if case != "benign" && case != "suspicious" {
+        return Err("--case must be benign or suspicious".into());
+    }
+    match (family.as_str(), case.as_str()) {
+        ("credential-egress", "benign") => {
             File::open(&config).map_err(|error| format!("open config: {error}"))?;
         }
-        "suspicious" => {
+        ("credential-egress", "suspicious") => {
             TcpStream::connect(("127.0.0.1", port))
                 .map_err(|error| format!("connect laboratory listener: {error}"))?;
         }
-        _ => return Err("--case must be benign or suspicious".into()),
+        ("persistence-origin", "benign") | ("admin-origin", "benign") => {
+            File::open(&config).map_err(|error| format!("open config: {error}"))?;
+        }
+        ("persistence-origin", "suspicious") => {
+            File::open(&persistence_origin)
+                .map_err(|error| format!("open controlled persistence origin: {error}"))?;
+        }
+        ("admin-origin", "suspicious") => {
+            File::open(&admin_origin)
+                .map_err(|error| format!("open controlled admin origin: {error}"))?;
+        }
+        _ => return Err("unsupported --family".into()),
     }
 
     println!(
         "{}",
-        json!({"ready": true, "pid": std::process::id(), "case": case})
+        json!({"ready": true, "pid": std::process::id(), "case": case, "family": family})
     );
     io::stdout().flush().map_err(|error| error.to_string())?;
 
@@ -111,7 +130,19 @@ fn run() -> Result<(), String> {
         return Err(format!("unsupported decision: {effect}"));
     }
 
-    match File::open(&secret) {
+    let terminal_result = match family.as_str() {
+        "credential-egress" => File::open(&secret).map(|_| ()),
+        "persistence-origin" => OpenOptions::new()
+            .write(true)
+            .open(&persistence_target)
+            .map(|_| ()),
+        "admin-origin" => OpenOptions::new()
+            .write(true)
+            .open(&admin_target)
+            .map(|_| ()),
+        _ => unreachable!(),
+    };
+    match terminal_result {
         Ok(_) => println!(
             "{}",
             json!({"case": case, "effect": effect, "open_result": "allowed", "errno": null})

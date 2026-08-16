@@ -48,6 +48,7 @@ def normalize(
     sequences: dict[str, int],
     *,
     sensitive_paths: set[str] | None = None,
+    path_labels: dict[str, set[str]] | None = None,
 ) -> dict[str, object] | None:
     fields = line.rstrip("\n").split("|")
     if len(fields) < 3 or fields[0] != "AGB_BPF":
@@ -75,7 +76,19 @@ def normalize(
     elif operation == "file.open":
         path = attributes.get("path", "<unknown>")
         resource = {"type": "file", "path": path}
-        labels = ["credential"] if path in (sensitive_paths or set()) else []
+        if "flags" in attributes:
+            flags = int(attributes["flags"])
+            access_modes = {
+                os.O_RDONLY: "read",
+                os.O_WRONLY: "write",
+                os.O_RDWR: "read-write",
+            }
+            resource["open_flags"] = flags
+            resource["access"] = access_modes.get(flags & os.O_ACCMODE, "unknown")
+        observed_labels = set((path_labels or {}).get(path, set()))
+        if path in (sensitive_paths or set()):
+            observed_labels.add("credential")
+        labels = sorted(observed_labels)
     elif operation == "network.connect":
         resource = {"type": "network", "fd": int(attributes.get("fd", "-1"))}
         family = attributes.get("family")
@@ -123,13 +136,25 @@ def main() -> None:
     parser.add_argument("--pid", type=int, help="optional test PID for a single input stream")
     parser.add_argument("--output", help="write JSONL to a file instead of stdout")
     parser.add_argument("--sensitive-path", action="append", default=[])
+    parser.add_argument("--path-label", action="append", default=[], metavar="PATH=LABEL")
     args = parser.parse_args()
+    path_labels: dict[str, set[str]] = {}
+    for mapping in args.path_label:
+        path, separator, label = mapping.rpartition("=")
+        if not separator or not path or not label:
+            parser.error("--path-label must be PATH=LABEL")
+        path_labels.setdefault(path, set()).add(label)
     sequences: dict[str, int] = {}
     output = open(args.output, "w") if args.output else sys.stdout
     try:
         for line in sys.stdin:
             try:
-                event = normalize(line, sequences, sensitive_paths=set(args.sensitive_path))
+                event = normalize(
+                    line,
+                    sequences,
+                    sensitive_paths=set(args.sensitive_path),
+                    path_labels=path_labels,
+                )
                 if event is not None:
                     output.write(json.dumps(event, separators=(",", ":")) + "\n")
                     output.flush()

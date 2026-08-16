@@ -57,3 +57,19 @@ class BpfNormalizerTests(unittest.TestCase):
         event = normalize(line, {}, sensitive_paths={"/tmp/agb-canary"})
         assert event is not None
         self.assertEqual(event["labels"], ["credential"])
+
+    def test_exact_path_policy_can_attach_causal_labels(self) -> None:
+        path = "/tmp/agb-controlled-persistence"
+        line = (
+            f"AGB_BPF|file.open|pid={os.getpid()}|uid={os.getuid()}|gid=1000|"
+            f"comm=lab|path={path}|flags={os.O_WRONLY}"
+        )
+        event = normalize(
+            line,
+            {},
+            path_labels={path: {"persistence-control", "policy-query"}},
+        )
+        assert event is not None
+        self.assertEqual(event["labels"], ["persistence-control", "policy-query"])
+        self.assertEqual(event["resource"]["access"], "write")
+        self.assertEqual(event["resource"]["open_flags"], os.O_WRONLY)

@@ -11,7 +11,7 @@ tracepoint:syscalls:sys_enter_execve
 tracepoint:syscalls:sys_enter_openat
     /($1 == 4294967295 || uid == $1) && pid != $2/
 {
-  printf("AGB_BPF|file.open|pid=%d|uid=%d|gid=%d|comm=%s|path=%s\n", pid, uid, gid, comm, str(args->filename));
+  printf("AGB_BPF|file.open|pid=%d|uid=%d|gid=%d|comm=%s|path=%s|flags=%d\n", pid, uid, gid, comm, str(args->filename), args->flags);
 }
 
 tracepoint:syscalls:sys_enter_connect

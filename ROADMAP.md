@@ -112,6 +112,14 @@ false positives and full decision coverage, but approximately 20 ms median
 per-event neural latency. This is false-positive evidence only; it neither
 measures malicious recall nor promotes Gate 2. See report 77.
 
+The protected-corpus laboratory now generates three independently named causal
+families from real BPF-observed syscalls: credential egress context, controlled
+persistence origin, and controlled administrative origin. Every terminal action
+is confined to laboratory files or loopback, exact-path semantic labels are
+policy-derived, and class labels come only from the orchestrator's handshaken
+ground truth. A fresh capture and three-seed report are still required before
+this implementation can be cited as Gate 2 evidence.
+
 - create isolated state per security namespace;
 - implement event-to-state updates and deterministic revisions;
 - account separately for retained state, snapshots, RSS/VRAM, and event storage;

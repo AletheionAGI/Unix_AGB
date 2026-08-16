@@ -20,6 +20,8 @@ from agb_fake_asm.telemetry_pipeline import (
     write_jsonl,
 )
 
+FAMILIES = ("credential-egress", "persistence-origin", "admin-origin")
+
 
 def listener(expected: int) -> tuple[socket.socket, int, threading.Thread, list[Exception]]:
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -50,7 +52,7 @@ def listener(expected: int) -> tuple[socket.socket, int, threading.Thread, list[
 
 
 def reconcile_controlled_identities(
-    events: list[dict[str, object]], ground_truth: dict[int, str], workload: Path
+    events: list[dict[str, object]], ground_truth: dict[int, object], workload: Path
 ) -> list[dict[str, object]]:
     """Correct exec-time /proc races only for handshaken lab processes.
 
@@ -75,7 +77,7 @@ def reconcile_controlled_identities(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bpftrace-command", default="sudo bpftrace")
-    parser.add_argument("--duration", type=int, default=15)
+    parser.add_argument("--duration", type=int, default=25)
     parser.add_argument("--cases-per-class", type=int, default=30)
     parser.add_argument("--output-root", type=Path, default=Path("var/telemetry/protected-lab"))
     args = parser.parse_args()
@@ -92,8 +94,16 @@ def main() -> None:
     output.mkdir(parents=True, exist_ok=True)
     canary = output / "protected-canary.txt"
     config = output / "benign-config.txt"
+    persistence_origin = output / "untrusted-persistence-origin.bin"
+    persistence_target = output / "controlled-autostart-entry.conf"
+    admin_origin = output / "untrusted-admin-origin.request"
+    admin_target = output / "controlled-admin-action.request"
     canary.write_text("unix-agb controlled canary; never transmitted\n")
     config.write_text("controlled benign configuration\n")
+    persistence_origin.write_text("controlled untrusted payload marker\n")
+    persistence_target.write_text("controlled persistence target; no host configuration\n")
+    admin_origin.write_text("controlled untrusted admin request marker\n")
+    admin_target.write_text("controlled admin target; no privileged operation\n")
     events_path = output / "events.jsonl"
     candidates_path = output / "candidates.jsonl"
     reviews_path = output / "reviews.jsonl"
@@ -113,47 +123,72 @@ def main() -> None:
             str(-1),
             "--sensitive-path",
             str(canary),
+            "--path-label",
+            f"{persistence_origin}=persistence-origin",
+            "--path-label",
+            f"{persistence_target}=persistence-control",
+            "--path-label",
+            f"{admin_origin}=admin-origin",
+            "--path-label",
+            f"{admin_target}=admin-control",
             "--output-events",
             str(events_path),
         ],
         stdout=subprocess.DEVNULL,
     )
-    ground_truth: dict[int, str] = {}
+    ground_truth: dict[int, tuple[str, str]] = {}
     held_processes: list[subprocess.Popen[str]] = []
     try:
         time.sleep(2)
         if observer.poll() is not None:
             raise RuntimeError("BPF observer failed during startup validation")
-        for index in range(args.cases_per_class * 2):
-            case = "benign" if index % 2 == 0 else "suspicious"
-            process = subprocess.Popen(
-                [
-                    str(workload),
-                    "--case",
-                    case,
-                    "--secret",
-                    str(canary),
-                    "--config",
-                    str(config),
-                    "--port",
-                    str(port),
-                    "--hold-for-release",
-                ],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                text=True,
-            )
-            assert process.stdin and process.stdout
-            ready = json.loads(process.stdout.readline())
-            if ready.get("pid") != process.pid or ready.get("case") != case:
-                raise RuntimeError("workload identity handshake failed")
-            ground_truth[process.pid] = case
-            process.stdin.write("ALLOW\n")
-            process.stdin.flush()
-            result = process.stdout.readline()
-            if '"open_result":"allowed"' not in result:
-                raise RuntimeError(f"controlled workload failed: {case}: {result.strip()}")
-            held_processes.append(process)
+        for family in FAMILIES:
+            for index in range(args.cases_per_class * 2):
+                case = "benign" if index % 2 == 0 else "suspicious"
+                process = subprocess.Popen(
+                    [
+                        str(workload),
+                        "--family",
+                        family,
+                        "--case",
+                        case,
+                        "--secret",
+                        str(canary),
+                        "--config",
+                        str(config),
+                        "--persistence-origin",
+                        str(persistence_origin),
+                        "--persistence-target",
+                        str(persistence_target),
+                        "--admin-origin",
+                        str(admin_origin),
+                        "--admin-target",
+                        str(admin_target),
+                        "--port",
+                        str(port),
+                        "--hold-for-release",
+                    ],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )
+                assert process.stdin and process.stdout
+                ready = json.loads(process.stdout.readline())
+                if (
+                    ready.get("pid") != process.pid
+                    or ready.get("case") != case
+                    or ready.get("family") != family
+                ):
+                    raise RuntimeError("workload identity handshake failed")
+                ground_truth[process.pid] = (case, family)
+                process.stdin.write("ALLOW\n")
+                process.stdin.flush()
+                result = process.stdout.readline()
+                if '"open_result":"allowed"' not in result:
+                    raise RuntimeError(
+                        f"controlled workload failed: {case}: {result.strip()}"
+                    )
+                held_processes.append(process)
         time.sleep(2)
         for process in held_processes:
             assert process.stdin
@@ -200,17 +235,32 @@ def main() -> None:
     reviews = []
     for candidate in candidates:
         pid = int(candidate["events"][0]["subject"]["pid"])
-        case = ground_truth[pid]
+        case, family = ground_truth[pid]
         operations = [event["operation"] for event in candidate["events"]]
-        sensitive = any("credential" in event.get("labels", []) for event in candidate["events"])
-        if not sensitive or (case == "suspicious" and "network.connect" not in operations):
+        labels = {label for event in candidate["events"] for label in event.get("labels", [])}
+        expected_query = {
+            "credential-egress": "credential",
+            "persistence-origin": "persistence-control",
+            "admin-origin": "admin-control",
+        }[family]
+        expected_trigger = {
+            "credential-egress": "network.connect",
+            "persistence-origin": "persistence-origin",
+            "admin-origin": "admin-origin",
+        }[family]
+        trigger_observed = (
+            expected_trigger in operations
+            if expected_trigger == "network.connect"
+            else expected_trigger in labels
+        )
+        if expected_query not in labels or (case == "suspicious" and not trigger_observed):
             raise RuntimeError(f"incomplete causal trajectory for PID {pid}")
         reviews.append(
             {
                 "trajectory_id": candidate["trajectory_id"],
                 "label": "malicious" if case == "suspicious" else "benign",
-                "label_source": "controlled-lab:loopback-canary-v1",
-                "family": "protected-loopback-canary",
+                "label_source": "controlled-lab:causal-families-v2",
+                "family": f"protected-{family}",
                 "review_confidence": "high",
             }
         )
@@ -228,6 +278,7 @@ def main() -> None:
                 "corpus": str(corpus_path),
                 "manifest": str(manifest_path),
                 "promotion_eligible": manifest["promotion_eligible"],
+                "families": manifest["families"],
             },
             indent=2,
         )
