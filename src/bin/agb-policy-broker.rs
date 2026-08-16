@@ -213,6 +213,36 @@ fn main() -> Result<(), String> {
             }
         }
     }
+    if !cache.is_empty() {
+        let compact_path = format!("{}.compact", cache_path);
+        if let Ok(mut compact) = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&compact_path)
+        {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            for (key, entry) in &cache {
+                let persisted = PersistedCache {
+                    key: key.clone(),
+                    effect: entry.effect.clone(),
+                    policy_revision: entry.policy_revision.clone(),
+                    expires_epoch: now
+                        + entry
+                            .expires
+                            .saturating_duration_since(Instant::now())
+                            .as_secs(),
+                };
+                let _ = serde_json::to_writer(&mut compact, &persisted);
+                let _ = compact.write_all(b"\n");
+            }
+            let _ = compact.flush();
+            let _ = std::fs::rename(&compact_path, &cache_path);
+        }
+    }
     let mut broker = Broker {
         cache,
         ttl: Duration::from_secs(2),
