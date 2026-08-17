@@ -125,12 +125,15 @@ FP/FN/ABSTAIN, and measured 54.37 ms p95 end-to-end latency. This remains
 controlled-laboratory evidence with enforcement disabled. See
 `docs/asm-cm-operational-ensemble.md` and report 88.
 
-A separate natural/novel-controlled validation is now preregistered but not yet
-executed. Its freezer rejects the previously observed corpora and protected
-family names, requires independently reviewed natural benign telemetry plus new
-BPF-captured delayed controlled compositions, and freezes all criteria before
-GPU evaluation. See `docs/gate3-natural-controlled-validation.md`. Until a new
-freeze and final report exist, this is protocol/tooling only, not evidence.
+A separate natural/novel-controlled validation rejected the previously observed
+corpora/family names and froze all criteria before GPU evaluation. It passed the
+declared criteria: the natural test had TN=697/FP=0/ABSTAIN=0 and the delayed
+controlled test had TN=69/TP=71/FP=0/FN=0/ABSTAIN=0, with no seed disagreement.
+The natural stratum triggered zero neural inference, so it measures selective
+pipeline false positives rather than neural FPR on sensitive natural queries.
+The controlled families remain laboratory variations of the same semantic
+relations, not natural unknown attacks. See
+`docs/gate3-natural-controlled-validation.md` and report 89.
 
 The repository now contains a deterministic `StateEngine` seam, a Python
 stateful proxy, and a real promoted-checkpoint ASM-CM adapter behind the

@@ -81,3 +81,11 @@ make evaluate-gate3-validation
 The evaluator refuses changed corpora, changed checkpoints, an already-used
 output, or a freeze that does not record `test_evaluated: false`. It performs no
 training and calls no enforcement backend.
+
+## Completed result
+
+The frozen CUDA evaluation passed every declared criterion. Natural test
+telemetry produced TN=697, FP=0, and ABSTAIN=0, but triggered zero neural
+inferences; this is selective-pipeline false-positive evidence only. The novel
+controlled test produced TN=69, TP=71, FP=0, FN=0, and ABSTAIN=0 with 420 member
+inferences and no disagreement. See report 89 for the bounded interpretation.

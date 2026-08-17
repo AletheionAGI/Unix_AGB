@@ -1,0 +1,52 @@
+{
+  "benchmark": "unix-agb-gate3-natural-controlled-ensemble-validation-v1",
+  "controlled": {
+    "confusion": {
+      "abstain": 0,
+      "fn": 0,
+      "fp": 0,
+      "tn": 69,
+      "tp": 71
+    },
+    "disagreement_rate": 0.0,
+    "events": 1540,
+    "false_positive_rate": 0.0,
+    "families": [
+      "protected-admin-origin-delayed",
+      "protected-credential-egress-delayed",
+      "protected-persistence-origin-delayed"
+    ],
+    "model_inferences": 420,
+    "query_latency_us": {
+      "p50": 72890.8285,
+      "p95": 82276.101,
+      "p99": 99958.642
+    },
+    "recall": 1.0,
+    "trajectories": 140
+  },
+  "controlled_corpus_sha256": "899303365b7f43909b0b6ac8f82207fef60ab3ffb6693f9cbde5162c3c189f67",
+  "criteria_supported": true,
+  "device": "cuda",
+  "enforcement_applied": false,
+  "freeze_sha256": "b913d7c3877f5bfe83231c5c752f9d8a8f453bb7233b3d9350920ef7a326a609",
+  "natural": {
+    "confusion": {
+      "abstain": 0,
+      "fn": 0,
+      "fp": 0,
+      "tn": 697,
+      "tp": 0
+    },
+    "disagreement_rate": 0.0,
+    "events": 60521,
+    "false_positive_rate": 0.0,
+    "high_confidence_test": 570,
+    "low_confidence_test": 127,
+    "model_inferences": 0,
+    "trajectories": 697
+  },
+  "natural_corpus_sha256": "5cd150086c2777789da3435982cfd1b0a9b46e2c8eb720395d1a6050b2dc7bac",
+  "report_sha256": "7c1dfe28df0d139a624c21d58e833b6e517aa0ea25f7484d93043222ff2a7ba8",
+  "source_revision": "4c8eddf2f07d9aec800769323d7e1effbd64815a"
+}
