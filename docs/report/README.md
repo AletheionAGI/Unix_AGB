@@ -57,6 +57,9 @@ remains authoritative in `ROADMAP.md`.
 - report 95: a minimal listener-owning supervisor that fails closed for one
   protected decision, restarts a crashed policy worker, and preserves the
   out-of-scope probe while retaining listener loss as an explicit blocker.
+- report 96: retained-listener handoff through `SCM_RIGHTS` across an injected
+  broker-generation crash, with complete target denial, out-of-scope isolation,
+  and explicit Yama/in-flight-crash limitations.
 
 ## Administrative boundary
 

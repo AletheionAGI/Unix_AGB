@@ -251,6 +251,16 @@ observed, and recovery-path latency was 1.276 ms p50, 4.081 ms p95, and
 persistent supervisor lifecycle, authenticated policy distribution, and safe
 listener-owner failure/recovery remain promotion blockers. See reports 91–95.
 
+A retained-listener guardian then transferred the listener through
+`SCM_RIGHTS`, injected broker-generation exit after eight completed responses,
+and made generation 2 ready in 9.701 ms. All 256 protected calls were denied,
+the out-of-scope probe remained allowed, and the workload completed without a
+watchdog. The sibling broker deliberately uses an exact-process network rule:
+host Yama policy prevents it from decoding the protected process's `sockaddr`
+without expanding ptrace authority. In-flight broker death, authenticated
+handoff, guardian failure, and protected-group teardown remain blockers. See
+report 96.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;
