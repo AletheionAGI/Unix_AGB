@@ -283,3 +283,18 @@ Every gate must preserve:
 - bounded queues, state accounting, rate limits, and recovery tests;
 - comparison with deterministic rules, time windows, and conventional scores;
 - precise distinction between proposed, implemented, tested, and validated.
+
+## Current next validation boundary
+
+Review exclusion, syscall-outcome correlation, process parent/command identity,
+and distinct socket/bind/connect telemetry are implemented. A conservative
+re-audit excluded all 833 historical natural trajectories because the v1
+capture observed requests rather than syscall outcomes. This is an explicit
+negative evidence-quality result, not a reclassification as malicious.
+
+The next operator-assisted step is to compile the v2 BPF observer with host
+privileges, capture a fresh naturalistic benign protected-query corpus, review
+and conservatively audit it, then freeze it. Only then compare sequential and
+opt-in parallel ensemble latency on the same frozen GPU workload. Enforcement
+remains out of scope until natural protected queries produce decisive evidence
+with bounded false positives and disagreement.
