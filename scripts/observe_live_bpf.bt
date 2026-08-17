@@ -67,6 +67,8 @@ tracepoint:syscalls:sys_enter_socket
 tracepoint:syscalls:sys_exit_socket
     /@pending_socket_family[tid]/
 {
+  printf("AGB_BPF|network.socket|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|ret=%d|syscall=socket\n",
+    pid, uid, gid, comm, args->ret, @pending_socket_family[tid], @pending_socket_type[tid], @pending_socket_protocol[tid], args->ret);
   if (args->ret >= 0) {
     $fd = (int64)args->ret;
     @socket_family[pid, $fd] = @pending_socket_family[tid];
@@ -76,6 +78,36 @@ tracepoint:syscalls:sys_exit_socket
   delete(@pending_socket_family[tid]);
   delete(@pending_socket_type[tid]);
   delete(@pending_socket_protocol[tid]);
+}
+
+tracepoint:syscalls:sys_enter_bind
+    /($1 == 4294967295 || uid == $1) && pid != $2/
+{
+  @pending_bind[tid] = 1;
+  $sa = (struct sockaddr *)uptr(args->umyaddr);
+  $family = $sa->sa_family;
+  $fd = (int64)args->fd;
+  $type = @socket_type[pid, $fd];
+  $protocol = @socket_protocol[pid, $fd];
+  if ($family == 2) {
+    $sin = (struct sockaddr_in *)$sa;
+    printf("AGB_BPF|network.bind.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=bind\n",
+      tid, pid, uid, gid, comm, $fd, ntop(2, $sin->sin_addr.s_addr), bswap($sin->sin_port), $type, $protocol, args->addrlen);
+  } else if ($family == 10) {
+    $sin6 = (struct sockaddr_in6 *)$sa;
+    printf("AGB_BPF|network.bind.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET6|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=bind\n",
+      tid, pid, uid, gid, comm, $fd, ntop(10, $sin6->sin6_addr.in6_u.u6_addr8), bswap($sin6->sin6_port), $type, $protocol, args->addrlen);
+  } else {
+    printf("AGB_BPF|network.bind.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=bind\n",
+      tid, pid, uid, gid, comm, $fd, $family, $type, $protocol, args->addrlen);
+  }
+}
+
+tracepoint:syscalls:sys_exit_bind
+    /@pending_bind[tid]/
+{
+  printf("AGB_BPF|network.bind.exit|tid=%d|pid=%d|uid=%d|gid=%d|ret=%d\n", tid, pid, uid, gid, args->ret);
+  delete(@pending_bind[tid]);
 }
 
 tracepoint:syscalls:sys_enter_close

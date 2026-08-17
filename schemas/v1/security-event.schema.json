@@ -31,7 +31,7 @@
         "agent_id": { "type": ["string", "null"], "maxLength": 256 }
       }
     },
-    "operation": { "enum": ["process.exec", "process.exit", "file.open", "network.connect", "identity.change"] },
+    "operation": { "enum": ["process.exec", "process.exit", "file.open", "network.socket", "network.bind", "network.connect", "identity.change"] },
     "resource": { "type": "object", "additionalProperties": true, "required": ["type"], "properties": { "type": { "type": "string", "minLength": 1, "maxLength": 64 } } },
     "result": { "enum": ["requested", "allowed", "denied", "failed"] },
     "policy_revision": { "type": "string", "minLength": 1, "maxLength": 128 },

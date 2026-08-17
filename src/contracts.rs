@@ -111,7 +111,13 @@ impl SecurityEvent {
         }
         if !matches!(
             self.operation.as_str(),
-            "process.exec" | "process.exit" | "file.open" | "network.connect" | "identity.change"
+            "process.exec"
+                | "process.exit"
+                | "file.open"
+                | "network.socket"
+                | "network.bind"
+                | "network.connect"
+                | "identity.change"
         ) {
             return Err("unsupported operation".into());
         }

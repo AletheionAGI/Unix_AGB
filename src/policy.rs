@@ -96,6 +96,8 @@ impl CompiledDecision {
                 "process.exec"
                     | "process.exit"
                     | "file.open"
+                    | "network.socket"
+                    | "network.bind"
                     | "network.connect"
                     | "identity.change"
             )

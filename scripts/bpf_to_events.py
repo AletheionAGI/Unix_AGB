@@ -135,7 +135,7 @@ def normalize(
         if path in (sensitive_paths or set()):
             observed_labels.add("credential")
         labels = sorted(observed_labels)
-    elif operation == "network.connect":
+    elif operation in {"network.socket", "network.bind", "network.connect"}:
         resource = {"type": "network", "fd": int(attributes.get("fd", "-1"))}
         family = attributes.get("family")
         if family:
@@ -156,7 +156,11 @@ def normalize(
             resource["path"] = attributes["unix_path"] or "<anonymous-unix-socket>"
         if "addrlen" in attributes:
             resource["addrlen"] = int(attributes["addrlen"])
-        labels = ["network-destination-observed"] if family else []
+        labels = (
+            ["network-destination-observed"]
+            if family and operation in {"network.bind", "network.connect"}
+            else []
+        )
     else:
         raise ValueError(f"unsupported BPF operation: {operation}")
     result = "requested"

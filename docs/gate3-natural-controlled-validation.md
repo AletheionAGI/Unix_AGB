@@ -61,7 +61,8 @@ make export-gate3-natural-validation
 ```
 
 The v2 observer now joins syscall entry and exit before emitting `file.open`
-and `network.connect`. A request alone is not evidence of a successful access:
+and network calls. `network.socket`, `network.bind`, and `network.connect` are
+distinct operations. A request alone is not evidence of a successful access:
 the event carries the kernel return value and is classified as `allowed`,
 `denied`, or `failed`. Process identity also includes parent PID and command
 line. Old v1 captures remain valid historical artifacts, but their

@@ -83,6 +83,21 @@ class BpfNormalizerTests(unittest.TestCase):
         self.assertEqual(event["result"], "allowed")
         self.assertEqual(event["resource"]["address"], "127.0.0.1")
 
+    def test_socket_and_bind_are_not_misreported_as_connect(self) -> None:
+        socket_event = normalize(
+            f"AGB_BPF|network.socket|pid={os.getpid()}|fd=9|family=2|"
+            "socket_type=2|protocol=17|ret=9|syscall=socket",
+            {},
+        )
+        bind_event = normalize(
+            f"AGB_BPF|network.bind|pid={os.getpid()}|fd=9|family=AF_INET|"
+            "address=0.0.0.0|port=0|socket_type=2|protocol=17|ret=0|syscall=bind",
+            {},
+        )
+        assert socket_event is not None and bind_event is not None
+        self.assertEqual(socket_event["operation"], "network.socket")
+        self.assertEqual(bind_event["operation"], "network.bind")
+
     def test_sensitive_path_is_labeled_only_by_explicit_policy(self) -> None:
         line = (
             f"AGB_BPF|file.open|pid={os.getpid()}|uid={os.getuid()}|gid=1000|"
