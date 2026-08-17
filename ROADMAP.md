@@ -233,7 +233,11 @@ resolver access remain available, decoded external IPv4/IPv6 calls receive
 The corrected run observed zero stale listener wakeups. This validates the
 narrow mechanism only; persistent service lifecycle, authenticated policy
 distribution, overload behavior, and unrelated-executable isolation remain
-promotion blockers. See reports 91 and 92.
+promotion blockers. Adversarial identity binding now covers TGID/start time,
+device/inode/SHA-256, notification-ID validity, replacement/PID-reuse tests,
+scoped failure behavior, and a real inherited out-of-scope executable probe.
+Persistent lifecycle and formal overload/latency benchmarks remain promotion
+blockers. See reports 91–93.
 
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;

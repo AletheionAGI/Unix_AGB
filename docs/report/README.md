@@ -48,6 +48,9 @@ remains authoritative in `ROADMAP.md`.
   after synchronization repair.
 - report 92: reproducible protocol and promotion criteria for that disposable
   seccomp-user-notify egress pilot.
+- report 93: adversarial process/artifact binding, notification-ID validation,
+  scoped failure behavior, thread/TGID correction, and real out-of-scope
+  executable isolation for the egress pilot.
 
 ## Administrative boundary
 

@@ -19,6 +19,13 @@ from pathlib import Path
 from typing import Any
 
 from agb_fake_asm.egress_policy import ExecutableEgressPolicy
+from agb_fake_asm.enforcement_scope import (
+    ArtifactIdentity,
+    ExecutableProcessScope,
+    ProcessIdentity,
+    enforcement_effect,
+    process_tgid,
+)
 from bpf_to_events import decode_sockaddr
 
 LIB = ctypes.CDLL("libseccomp.so.2", use_errno=True)
@@ -28,6 +35,7 @@ SCMP_ACT_ALLOW = 0x7FFF0000
 SCMP_SYS_CONNECT_X86_64 = 42
 SECCOMP_IOCTL_NOTIF_RECV = 0xC0502100
 SECCOMP_IOCTL_NOTIF_SEND = 0xC0182101
+SECCOMP_IOCTL_NOTIF_ID_VALID = 0x40082102
 SECCOMP_USER_NOTIF_FLAG_CONTINUE = 1
 NOTIFICATION = struct.Struct("<QIIiIQQQQQQQ")
 
@@ -66,12 +74,34 @@ def filtered_curl(channel: socket.socket, curl: Path, url: str) -> None:
     try:
         listener = install_filter()
         channel.sendmsg([b"ready"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [listener]))])
+        release_read, release_write = os.pipe()
         curl_pid = os.fork()
         if curl_pid == 0:
+            os.close(release_write)
+            if os.read(release_read, 1) != b"G":
+                os._exit(126)
+            os.close(release_read)
             os.execv(str(curl), [str(curl), "--silent", "--show-error", "--max-time", "4", url])
+        os.close(release_read)
+        channel.send(json.dumps({"target_pid": curl_pid}).encode())
+        if channel.recv(16) != b"GO":
+            os.kill(curl_pid, 9)
+            os._exit(126)
+        out_of_scope_probe_allowed = False
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("198.51.100.1", 443))
+            out_of_scope_probe_allowed = True
+        finally:
+            probe.close()
+        os.write(release_write, b"G")
+        os.close(release_write)
         _, status = os.waitpid(curl_pid, 0)
         exit_code = os.waitstatus_to_exitcode(status)
-        channel.send(json.dumps({"exit_code": exit_code}).encode())
+        channel.send(json.dumps({
+            "exit_code": exit_code,
+            "out_of_scope_probe_allowed": out_of_scope_probe_allowed,
+        }).encode())
         os._exit(exit_code)
     except BaseException as error:
         channel.send(json.dumps({"error": str(error)}).encode())
@@ -104,8 +134,23 @@ def read_sockaddr(pid: int, address: int, length: int) -> dict[str, object]:
     return decode_sockaddr(raw.hex())
 
 
+def notification_is_valid(listener: int, notification_id: int) -> bool:
+    try:
+        fcntl.ioctl(
+            listener,
+            SECCOMP_IOCTL_NOTIF_ID_VALID,
+            bytearray(struct.pack("<Q", notification_id)),
+            True,
+        )
+        return True
+    except OSError as error:
+        if error.errno == errno.ENOENT:
+            return False
+        raise
+
+
 def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str, Any]:
-    parent, child = socket.socketpair()
+    parent, child = socket.socketpair(type=socket.SOCK_SEQPACKET)
     pid = os.fork()
     if pid == 0:
         parent.close()
@@ -113,8 +158,13 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
         filtered_curl(child, curl, url)
     child.close()
     listener = receive_listener(parent)
+    target_message = json.loads(parent.recv(4096))
+    target_pid = int(target_message["target_pid"])
+    scope = ExecutableProcessScope(target_pid, ArtifactIdentity.from_path(curl))
+    parent.send(b"GO")
     decisions = []
     stale_notifications = 0
+    invalid_notification_ids = 0
     try:
         while True:
             ready, _, _ = select.select([parent, listener], [], [], 0.1)
@@ -132,6 +182,10 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
                     "exit_code": exit_code,
                     "decisions": decisions,
                     "stale_notifications": stale_notifications,
+                    "invalid_notification_ids": invalid_notification_ids,
+                    "out_of_scope_probe_allowed": status_report.get(
+                        "out_of_scope_probe_allowed", False
+                    ),
                 }
             if listener not in ready:
                 continue
@@ -146,11 +200,29 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
             values = NOTIFICATION.unpack(notification)
             notification_id, notified_pid = values[0], values[1]
             args = values[6:]
+            if not notification_is_valid(listener, notification_id):
+                invalid_notification_ids += 1
+                continue
+            started_ns = time.monotonic_ns()
+            try:
+                notified_tgid = process_tgid(notified_pid)
+            except (OSError, ValueError):
+                notified_tgid = -1
+            target_notification = notified_tgid == target_pid
+            adapter_failed = False
+            identity_reason = "PID_OUT_OF_SCOPE"
             try:
                 resource = read_sockaddr(notified_pid, args[1], args[2])
                 resource["type"] = "network"
                 resource["fd"] = args[0]
                 executable = os.readlink(f"/proc/{notified_pid}/exe")
+                if target_notification:
+                    identity = ProcessIdentity.from_pid(
+                        notified_pid, include_hash=scope.pinned is None
+                    )
+                    identity_valid, identity_reason = scope.bind_or_verify(identity)
+                    if not identity_valid:
+                        adapter_failed = True
                 event = {
                     "operation": "network.connect",
                     "result": "requested",
@@ -162,10 +234,19 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
                 resource = {"type": "network", "decode_error": str(error)}
                 executable = "<unavailable>"
                 decision = {"effect": "ABSTAIN", "reason": "DESTINATION_DECODE_FAILED"}
-            # At this enforcement boundary ABSTAIN is fail-closed for the scoped executable.
-            deny = decision["effect"] == "DENY" or (
-                decision["effect"] == "ABSTAIN" and executable == policy.executable
+                adapter_failed = True
+            decision_latency_us = (time.monotonic_ns() - started_ns) // 1_000
+            decision_timed_out = decision_latency_us > 100_000
+            effect = enforcement_effect(
+                decision["effect"],
+                target_pid=target_notification,
+                adapter_failed=adapter_failed,
+                timed_out=decision_timed_out,
             )
+            deny = effect == "DENY"
+            if not notification_is_valid(listener, notification_id):
+                invalid_notification_ids += 1
+                continue
             response = struct.pack(
                 "<Qqii",
                 notification_id,
@@ -180,6 +261,13 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
                 "effect": "DENY" if deny else decision["effect"],
                 "policy_effect": decision["effect"],
                 "reason": decision["reason"],
+                "identity_reason": identity_reason,
+                "target_pid": target_notification,
+                "notified_tid": notified_pid,
+                "notified_tgid": notified_tgid,
+                "decision_latency_us": decision_latency_us,
+                "adapter_failed": adapter_failed,
+                "decision_timed_out": decision_timed_out,
                 "errno": errno.EACCES if deny else None,
                 "enforcement_applied": deny,
             })
@@ -220,6 +308,7 @@ def main() -> None:
     curl = args.curl.resolve()
     if not curl.is_file():
         parser.error(f"curl executable not found: {curl}")
+    scope_artifact = ArtifactIdentity.from_path(curl)
     policy = ExecutableEgressPolicy(str(curl))
     server, port, server_pid = loopback_server()
     try:
@@ -242,9 +331,27 @@ def main() -> None:
     external_denials = [item for item in external["decisions"] if item["effect"] == "DENY"]
     if external["exit_code"] == 0 or not external_denials:
         raise RuntimeError("external curl was not denied")
+    for result in (loopback, external):
+        out_of_scope = [
+            item for item in result["decisions"] if not item["target_pid"]
+        ]
+        if not result["out_of_scope_probe_allowed"] or not any(
+            item["effect"] == "ALLOW"
+            and item["resource"].get("address") == "198.51.100.1"
+            and not item["enforcement_applied"]
+            for item in out_of_scope
+        ):
+            raise RuntimeError("out-of-scope executable isolation was not proven")
     report = {
-        "proof": "unix-agb-executable-egress-seccomp-pilot-v1",
+        "proof": "unix-agb-executable-egress-seccomp-pilot-v2",
         "scope": str(curl),
+        "identity_binding": {
+            "path": scope_artifact.path,
+            "device": scope_artifact.device,
+            "inode": scope_artifact.inode,
+            "sha256": scope_artifact.sha256,
+            "process_fields": ["tgid", "start_time_ns"],
+        },
         "loopback": loopback,
         "external": external,
         "external_denials": len(external_denials),
