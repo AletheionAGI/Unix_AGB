@@ -10,11 +10,13 @@ notification installed before `exec`. The guardian may deny a later external
 `network.connect` only when the current authenticated Gate 3 cache contains an
 unexpired `DENY` for the service's exact process namespace.
 
-The first implementation maps an active trajectory-level Gate 3 network deny
-to external-egress containment for that exact namespace. Loopback and Unix
-sockets remain allowed. This broader containment mapping is explicit; it must
-not be described as destination-specific enforcement because the compiled
-Gate 3 v1 cache stores a resource digest, not the normalized destination.
+The runtime maps an active trajectory-level Gate 3 deny, regardless of the
+operation that produced it, to external-egress containment for that exact
+namespace. This is required because the model may elevate the trajectory on a
+credential read, persistence write or administrative execution before the
+subsequent egress. Loopback and Unix sockets remain allowed. The originating
+operation and decision ID remain in the audit. This broader containment mapping
+must not be described as destination-specific enforcement.
 
 ## Required behavior
 

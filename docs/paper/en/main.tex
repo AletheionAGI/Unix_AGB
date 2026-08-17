@@ -1,0 +1,637 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{url}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black,
+  citecolor=blue!55!black,
+  pdftitle={Persistent Causal State for Operating-System Enforcement}
+}
+
+\lstdefinelanguage{json}{
+  basicstyle=\ttfamily\small,
+  string=[s]{"}{"},
+  stringstyle=\color{green!35!black},
+  comment=[l]{//},
+  commentstyle=\color{gray},
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false
+}
+
+\title{Persistent Causal State for Operating-System Enforcement\\
+\large Engineering a Stateful, Auditable, and Fail-Closed Linux Policy Runtime}
+\author{Unix-AGB Project}
+\date{August 17, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Most operating-system enforcement mechanisms decide from the current request:
+an executable, a credential, a path, a socket address, or a static label. This
+local view is efficient and dependable, but it cannot directly express risk
+that emerges from a sequence of individually ordinary actions. Unix-AGB
+(Aletheion Guard Bridge) investigates a complementary architecture in which
+normalized kernel observations update persistent, namespace-isolated causal
+state; a deterministic policy layer then compiles only restrictive decisions
+into short-lived enforcement records. Exact events remain the historical
+truth, learned state remains replaceable, and Linux retains final enforcement
+authority. This article explains the engineering of that pipeline: contracts,
+identity, ordering, persistence, policy revisions, authenticated caches,
+seccomp user-notification handoff, recovery, packaging, and experimental
+validation. It also states the boundary of the result. The current system is a
+controlled prototype with packaged, opt-in, exact-launch egress enforcement;
+it is not a production security service and does not yet establish security
+efficacy on natural unknown attacks.
+\end{abstract}
+
+\section{The engineering problem}
+
+Consider two processes that perform the same terminal operation: opening a
+credential file or connecting to an external address. One process may have
+followed a routine configuration path; the other may have executed an unusual
+tool, established external connectivity, and only then accessed the sensitive
+resource. A stateless rule sees identical terminal requests. A stateful system
+can distinguish the histories, but adding state to operating-system policy
+creates difficult requirements:
+
+\begin{itemize}[leftmargin=*]
+  \item events must be ordered and attributed to a stable identity;
+  \item state must survive restart without accepting corruption or rollback;
+  \item model output must not become historical truth or silently grant access;
+  \item enforcement must remain deterministic, bounded, and available during
+        control-plane failures;
+  \item every negative action must be linked to durable evidence and an exact
+        policy revision;
+  \item recovery must not broaden a denial to unrelated processes.
+\end{itemize}
+
+Unix-AGB approaches these constraints by separating observation, canonical
+evidence, state inference, policy compilation, and kernel enforcement. The
+separation is more important than any individual state engine.
+
+In this paper, \emph{causal state} denotes trajectory-dependent state whose
+policy interpretation depends on ordered predecessor events within the same
+security namespace; we do not claim causal identification in the statistical
+or interventionist sense. Unix-AGB is therefore not primarily a new trajectory
+detector. It is an architecture for safely compiling persistent,
+namespace-scoped trajectory state into short-lived kernel-facing restrictions.
+The state engine determines when a trajectory warrants restriction; Unix-AGB
+determines how that conclusion can affect kernel enforcement without giving the
+state engine authority to expand privilege.
+
+\subsection*{Contributions}
+
+This work makes four contributions:
+
+\begin{enumerate}[leftmargin=*]
+  \item an operating-system policy architecture that separates persistent
+        causal state from canonical evidence and deterministic enforcement;
+  \item a deny-only compilation model in which learned state may restrict but
+        cannot expand privilege;
+  \item a restart- and revision-aware enforcement pipeline with authenticated
+        short-lived policy records and durable negative audit; and
+  \item an experimental Linux prototype demonstrating namespace-scoped seccomp
+        enforcement, recovery, rollback, and failure semantics.
+\end{enumerate}
+
+\section{Relation to existing security mechanisms}
+
+Linux Security Modules provide a common kernel framework for mandatory access
+control systems such as SELinux and AppArmor~\cite{lsm,selinux,apparmor}.
+Seccomp user notification permits selected system calls to be mediated in user
+space~\cite{seccomp}, while eBPF-based systems move programmable observation
+and runtime detection close to kernel events~\cite{falco}. Unix-AGB does not
+replace these mechanisms: it uses existing Linux enforcement surfaces as the
+last step of a separately versioned state-and-policy pipeline.
+
+Prior work has reconstructed attack histories from operating-system
+provenance~\cite{backtracker,camflow}, tracked information flow and
+taint~\cite{denning}, correlated event streams with stateful and complex-event
+processing~\cite{cep}, and learned anomalous system-call behavior
+~\cite{forrest}. Commercial behavior-based endpoint detection follows a
+related operational pattern, although its internal semantics are usually not a
+public systems contract. These approaches establish that histories can improve
+detection and investigation. The distinct question addressed here is how a
+persistent trajectory conclusion becomes a compact, authenticated, expiring,
+revision-bound kernel restriction that cannot grant privilege and remains
+auditable across restart, rollback, and component failure. Detection quality is
+deliberately outside the central claim: FSMs, sequence rules, windows, proxies,
+and ASM-CM all enter through the same state-engine boundary.
+
+\section{System decomposition}
+
+The architecture is a pipeline of narrow trust boundaries:
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.20\textwidth} >{\raggedright\arraybackslash}p{0.70\textwidth}}
+\toprule
+Layer & Responsibility \\
+\midrule
+Linux and collectors & Observe process, file, identity, and network operations; provide stable kernel facts and enforcement hooks. \\
+Event gateway & Validate schema, identity, ordering, provenance, and size before accepting an event. \\
+Canonical store & Preserve exact append-only facts. Reject duplicates and sequence replay. \\
+State engine & Maintain bounded state per security namespace and emit a summary with revision, signals, evidence identifiers, and optional confidence. \\
+Policy engine & Apply deterministic invariants and translate validated state into \texttt{ALLOW}, \texttt{DENY}, or \texttt{ABSTAIN}. \\
+Compiled cache & Retain only authenticated, versioned, expiring \texttt{DENY} records for the enforcement edge. \\
+Enforcement adapter & Bind a compiled decision to an exact kernel-visible subject and return a concrete result such as \texttt{EACCES}. \\
+Optional reader & Produce human-readable explanations outside the synchronous enforcement path. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The canonical store and the state engine deliberately answer different
+questions. The store answers ``what exactly was observed?'' The state engine
+answers ``what bounded security state follows from the accepted history?'' A
+checkpoint, neural representation, or rule-engine accumulator is therefore a
+derived artifact. It may be discarded and reconstructed; canonical evidence
+must not be silently rewritten to agree with it.
+
+\section{Canonical events and stable identity}
+
+\subsection{The event contract}
+
+Each accepted event carries a schema version, globally unique event identifier,
+per-namespace sequence, wall and monotonic timestamps, host identifier,
+namespace, subject, operation, resource, observed or requested result, policy
+revision, labels, and provenance. The first operation vocabulary contains
+\texttt{process.exec}, \texttt{process.exit}, \texttt{file.open},
+\texttt{network.connect}, and \texttt{identity.change}.
+
+The contract is intentionally metadata-oriented. It does not require file
+contents, packet payloads, secret values, or prompt bodies. Content resolution
+would be a separate authorized operation. This reduces both privacy exposure
+and the amount of attacker-controlled material admitted to the policy plane.
+
+\subsection{PID reuse is an identity bug}
+
+A numeric process identifier is recyclable. State keyed only by PID can leak a
+previous process's history into a new process. Unix-AGB instead uses:
+
+\begin{center}
+\texttt{process:<boot-id>:<pid>:<start-time-ns>}
+\end{center}
+
+The boot identifier separates reboots; start time separates PID reuse inside a
+boot. The gateway recomputes the expected namespace from the subject fields and
+rejects mismatches. In the Gate 4 handoff, the launcher and guardian derive the
+identity independently from \texttt{/proc}; a handoff is rejected if the
+claimed namespace does not match the live process.
+
+\subsection{Ordering and gaps}
+
+Sequence is strictly increasing within a namespace. Duplicate event IDs and
+non-increasing sequences are rejected before the in-memory index changes. A
+gap is not interpreted as benign absence. It marks the state incomplete until
+an explicit resynchronization policy is applied. Wall-clock timestamps are
+descriptive; sequence and monotonic time define causal order.
+
+This rule prevents a common stateful-security failure: treating lost telemetry
+as evidence that nothing happened.
+
+\section{Persistent causal state}
+
+\subsection{Namespace-isolated transition state}
+
+The state engine consumes one validated event at a time and emits a
+\texttt{SecurityStateSummary}. Its revision must match the accepted event
+sequence. A summary contains a risk band, signals, evidence IDs, engine name,
+checkpoint fingerprint when applicable, and update time. Queries and updates
+require an exact namespace match; state is never implicitly shared across
+processes, users, containers, services, agents, or tenants.
+
+A minimal deterministic example can remember that an execution occurred,
+then that an external connection followed it, and finally that a credential was
+accessed. The terminal credential event becomes elevated only when the earlier
+relations exist in the same namespace. The important property is not the
+specific rule, but the state transition contract:
+
+\[
+S_{n+1} = F(S_n, E_{n+1}, C, R)
+\]
+
+where $S_n$ is namespace state, $E_{n+1}$ is the next canonical event, $C$ is
+the configuration fingerprint, and $R$ is the engine or checkpoint revision.
+A consumer must be able to identify all four.
+
+\subsection{State engines are replaceable}
+
+Unix-AGB exposes a state-engine boundary rather than coupling policy to one
+model. Deterministic finite-state, sequence-rule, sliding-window, stateful
+proxy, and ASM-CM adapters can be evaluated through the same event and summary
+contracts. This permits baseline comparisons and prevents learned inference
+from redefining the policy protocol.
+
+The research history matters. Early causal-generalization experiments produced
+negative results; canonical trajectory-local identifiers later resolved a
+representation failure, and a frozen three-seed ensemble succeeded on a
+synthetic held-out test. Those results support a mechanism and a controlled
+family, not detection of natural unknown attacks. The operational design
+therefore defaults model disagreement to \texttt{ABSTAIN} and keeps neural
+inference outside the syscall hot path.
+
+\subsection{Atomic snapshots and restore}
+
+Persistent state is useful only if restore is stricter than ordinary loading.
+The prototype snapshot protocol binds:
+
+\begin{itemize}[leftmargin=*]
+  \item snapshot format version;
+  \item engine fingerprint;
+  \item configuration fingerprint;
+  \item complete, deterministically ordered namespace state;
+  \item checksum or authentication data.
+\end{itemize}
+
+Checkpoint writes use a temporary file in the destination directory, flush and
+\texttt{fsync}, atomic rename, and directory \texttt{fsync}. State updates are
+rolled back in memory if checkpoint persistence fails. Restore rejects corrupt,
+unsupported, wrong-engine, or wrong-configuration snapshots rather than
+inventing permissive state.
+
+Checksums detect accidental corruption. Security-sensitive policy snapshots
+add HMAC authentication because an attacker able to rewrite state can also
+recompute an ordinary hash.
+
+\section{From state to policy}
+
+\subsection{A small enforcement algebra}
+
+The policy core deliberately uses only three effects:
+
+\begin{description}[leftmargin=2.4cm,style=nextline]
+  \item[\texttt{ALLOW}] No restricting invariant was found. In the current
+        Gate 3 design this is a shadow/audit result, not a compiled grant.
+  \item[\texttt{DENY}] Validated state and policy justify a restriction.
+  \item[\texttt{ABSTAIN}] Evidence, confidence, revision, persistence, or
+        contract integrity is insufficient for a trustworthy decision.
+\end{description}
+
+Warnings are audit metadata, not a fourth kernel action. This keeps the policy
+algebra small and ensures domain-specific assessments are translated by an
+adapter before reaching the enforcement layer.
+
+\subsection{Decision order and monotonic authority}
+
+Gate 3 first validates policy configuration, event and state contracts,
+namespace equality, policy revision, and state revision. Static
+\texttt{restricted} or \texttt{quarantined} state yields \texttt{DENY}.
+Elevated learned state requires evidence, minimum confidence, and a checkpoint
+fingerprint. Normal or monitor state yields a shadow \texttt{ALLOW}. Unknown,
+stale, incomplete, or inconsistent input yields fail-closed
+\texttt{ABSTAIN}.
+
+Only \texttt{DENY} is compiled. Neither learned state nor an unavailable cache
+can manufacture permission. Base Linux policy remains authoritative, and the
+stateful layer can maintain or reduce existing privilege but cannot expand it.
+
+\subsection{Durability before restriction}
+
+A negative decision is appended to the audit log and synchronized before it
+becomes cacheable. If audit persistence fails, the result becomes
+\texttt{ABSTAIN} with an explicit reason code. Audit-only positive and abstain
+records may be group-synchronized for throughput, but a \texttt{DENY} forces
+durability immediately.
+
+This ordering provides a recoverable invariant:
+
+\begin{center}
+\textit{if enforcement can observe a compiled denial, durable audit evidence
+for that denial already exists.}
+\end{center}
+
+\section{Authenticated decision compilation}
+
+A compiled decision binds the full namespace, operation, SHA-256 digest of the
+canonical resource, policy revision, state revision, evidence digest, decision
+identifier, and expiry. The cache accepts only \texttt{DENY}. Its snapshot
+authenticates the ordered record set and active policy revision with
+HMAC-SHA-256.
+
+Cache lookup returns \texttt{ABSTAIN} on a miss, expiry, policy mismatch, or
+stale state revision. Rotation and rollback clear incompatible in-memory state.
+An older snapshot cannot be relabeled as a newer policy. The Gate 4 runtime
+projection additionally retains the last authenticated snapshot when a reload
+is malformed; initial invalid policy prevents activation, while an authenticated
+empty rotation or expiry removes the restriction.
+
+The current service-supervision prototype maps any active trajectory-level
+\texttt{DENY} to external-egress containment for the exact process namespace.
+The denial may originate at a credential read, persistence write,
+administrative execution, or network event; its originating operation remains
+in the audit. This mapping is intentionally broad and must not be called
+destination-specific: the runtime checks namespace, revision, and expiry but
+does not compare the intercepted destination with the compiled resource digest.
+
+\section{The Gate 4 enforcement edge}
+
+\subsection{Install interception before execution}
+
+The opt-in launcher creates the protected child and installs a seccomp filter
+with user notification before releasing it into \texttt{exec}. This ordering
+closes a race in which the application could connect before enforcement was
+attached. The listener file descriptor and a bounded memory-reading adapter are
+transferred to a long-lived guardian over a Unix-domain control socket.
+
+The handoff is authenticated with peer credentials, an HMAC, a policy revision,
+a nonce, and a short monotonic expiry. File descriptors are passed with
+\texttt{SCM\_RIGHTS}. The guardian also verifies process-group scope and
+independently recomputes the target namespace. Replay, wrong peer, stale
+revision, expired message, namespace mismatch, or incomplete descriptor transfer
+causes rejection.
+
+\subsection{Decision at \texttt{connect}}
+
+For each seccomp notification the guardian:
+
+\begin{enumerate}[leftmargin=*]
+  \item validates that the notification is still live;
+  \item resolves the notifying thread to its thread-group process;
+  \item checks exact target scope;
+  \item reads at most 128 bytes of the requested \texttt{sockaddr};
+  \item permits loopback and Unix-domain destinations according to the frozen
+        policy;
+  \item consults the current authenticated Gate 3 cache for external egress;
+  \item appends and synchronizes the enforcement audit record;
+  \item returns \texttt{EACCES} for a matched denial or continues the syscall
+        otherwise.
+\end{enumerate}
+
+Unknown address families, malformed lengths, failed memory reads, or adapter
+failure take a scoped fail-closed path for the protected target. Out-of-scope
+processes do not inherit the target's denial.
+
+\subsection{Listener ownership and recovery}
+
+Early experiments exposed a critical distinction between a policy-worker crash
+and listener loss. If the process owning a seccomp notification listener dies,
+the protected syscall does not necessarily receive a clean \texttt{EACCES}; it
+may remain blocked or fail through kernel teardown semantics. Calling that
+behavior ``fail closed'' would hide an availability failure.
+
+The engineering response was to retain listener ownership in a guardian while
+making the policy worker replaceable. In-flight notification IDs are validated
+before a response; worker failures consume a bounded restart budget and use a
+scoped fallback. Pre-lease deadlines and scoped process teardown bound cases in
+which no worker has safely leased the notification. Recovery never broadens a
+target denial to an unrelated process.
+
+\section{Packaging and operation}
+
+The laboratory runtime is packaged as an opt-in Debian artifact with a systemd
+unit, dedicated system account, configuration under \texttt{/etc/unix-agb},
+runtime sockets under \texttt{/run/unix-agb}, state and audit under
+\texttt{/var/lib/unix-agb}, and root-owned authentication keys. Configuration
+is revision-bound and disabled by default. The service applies systemd
+hardening such as \texttt{NoNewPrivileges}, \texttt{ProtectSystem=strict},
+private temporary space, capability bounding, and explicit writable paths.
+
+Package lifecycle tests cover install, inactive default, explicit activation,
+restart, daemon reload, reboot, upgrade, disable, purge, dedicated-account
+cleanup, socket cleanup, and residue auditing. A launcher readiness race was
+found during negative testing: systemd reported a simple service active before
+its control socket existed. The launcher now waits for a bounded interval and
+fails before releasing the protected child if readiness is not reached.
+
+This is a useful example of why packaging is part of security engineering.
+Correct in-process logic does not establish safe boot ordering, upgrade
+behavior, secret ownership, or recovery.
+
+\section{Experimental evidence}
+
+The repository preserves protocols, failed attempts, environment fingerprints,
+and reports rather than reporting only successful demonstrations. The relevant
+engineering progression includes:
+
+\begin{itemize}[leftmargin=*]
+  \item a causal proof with identical terminal operations and divergent
+        trajectory-dependent shadow decisions;
+  \item dry-run Gate 3 policy with revision checks, durable audit, authenticated
+        deny-only cache, expiry, corruption rejection, and namespace isolation;
+  \item a seccomp user-notification pilot returning \texttt{EACCES};
+  \item concurrent protected calls, overload tests, timeout paths, and the
+        negative listener-loss result;
+  \item retained-listener guardian and replaceable worker recovery;
+  \item packaged, opt-in exact-launch enforcement on controlled Ubuntu 24.04
+        and 26.04 virtual machines;
+  \item a controlled long-lived service transition from authenticated empty
+        policy, to exact-namespace denial, through corrupt reload retention,
+        and back to authenticated empty policy.
+\end{itemize}
+
+Measured samples range from tens of microseconds in the retained-listener
+guardian experiments to low milliseconds in concurrent broker paths. These
+numbers characterize particular controlled boundaries; they are not production
+capacity claims. The service-supervision run observed the protected application
+change from an allowed external attempt to \texttt{EACCES}, retain denial after
+a malformed cache replacement, and recover after authenticated empty rotation,
+while an unprotected control remained unaffected.
+
+\begin{center}
+\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.43\textwidth} >{\raggedright\arraybackslash}p{0.47\textwidth}}
+\toprule
+Experiment & Observed result \\
+\midrule
+Retained-listener guardian, 256 target calls & 256/256 returned \texttt{EACCES}; decision latency 44~$\mu$s p50, 49~$\mu$s p95, 68~$\mu$s p99 \\
+Concurrent broker, 256 target calls & 256/256 returned \texttt{EACCES}; 1.148~ms p50, 1.939~ms p95, 2.366~ms p99 \\
+In-flight worker failure & Exact pending notification returned \texttt{EACCES} in 123~$\mu$s; replacement worker ready in 9.839~ms \\
+Exact-launch VM enforcement & Protected external connect returned \texttt{EACCES}; loopback and unprotected control remained unaffected \\
+Authenticated cache transitions & Corrupt reload retained the last valid denial; authenticated empty rotation removed it \\
+Service-supervision audit & 191~$\mu$s p50 and 276~$\mu$s p95/p99, including durable audit \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The table reports separate experimental boundaries and must not be read as one
+end-to-end latency distribution. In particular, the guardian microbenchmark,
+concurrent broker, packaged VM, and service-supervision runs used different
+controlled workloads.
+
+A subsequent transition replaced the handcrafted trigger with the frozen
+three-member ensemble and the real Gate 3 policy compiler while the protected
+service remained alive. The resulting authenticated \texttt{DENY}, originating
+at \texttt{file.open}, caused the next external connect to receive
+\texttt{EACCES}. Its input was nevertheless a frozen controlled trajectory
+explicitly rebound to the live namespace, not newly captured BPF telemetry.
+The frozen promotion matrix therefore continues to classify Gate 4 as a
+controlled prototype.
+
+\section{Failure semantics}
+
+``Fail closed'' must name both scope and consequence. Unix-AGB distinguishes:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{policy abstention}: no trustworthy state-derived decision;
+  \item \textbf{scoped denial}: the protected request receives
+        \texttt{EACCES};
+  \item \textbf{scoped teardown}: the protected workload is terminated when a
+        safe response cannot be guaranteed;
+  \item \textbf{base-policy continuity}: Linux policy remains active if the
+        model or control plane fails;
+  \item \textbf{availability failure}: the request hangs or loses a usable
+        response, which must not be mislabeled as successful denial.
+\end{itemize}
+
+This vocabulary forces the design to account for missing telemetry, sequence
+gaps, corrupt snapshots, expired decisions, worker crashes, listener loss,
+audit failure, policy rollback, and restart races independently.
+
+\section{Security properties and residual risks}
+
+The implemented contracts support several concrete properties:
+
+\begin{itemize}[leftmargin=*]
+  \item stable process identity resists PID reuse;
+  \item exact namespace checks limit cross-process state leakage;
+  \item replay and sequence checks preserve event order;
+  \item authenticated, revision-bound cache snapshots resist unauthenticated
+        policy replacement;
+  \item deny-only compilation prevents model-derived privilege expansion;
+  \item expiry and authenticated empty rotation provide bounded rollback;
+  \item durable audit precedes compiled negative enforcement;
+  \item independent handoff verification binds the listener to the live target.
+\end{itemize}
+
+Residual risks remain substantial. A compromised privileged collector can
+forge observations; a compromised kernel can defeat both observation and
+enforcement; HMAC keys require production-grade provisioning and rotation;
+destination-specific binding is incomplete in the current service projection;
+system-wide non-cooperative attachment is not implemented; natural-telemetry
+efficacy remains unproven; and broad fail-closed policy can become a denial-of-
+service mechanism. These are promotion blockers, not documentation details.
+
+\section{Why persistent causal state belongs beside, not inside, the kernel}
+
+The prototype does not yet justify a custom kernel. Linux already provides the
+necessary experimental surfaces: BPF or audit-style observation, stable process
+metadata, Unix peer credentials, cgroups, systemd supervision, seccomp user
+notification, and established LSMs. Causal state, checkpoint management,
+policy revisioning, review, and optional learned inference evolve faster and
+have larger failure surfaces than a minimal kernel hook.
+
+Keeping that machinery in user space permits restart, replacement, comparison
+with deterministic baselines, and explicit abstention. The kernel-facing edge
+receives a compact, expiring, authenticated restriction rather than a model.
+Kernel work should be considered only if measurement identifies a missing hook,
+unavailable identity, unacceptable latency, or an enforcement property that
+existing Linux interfaces cannot provide.
+
+\section{Conclusion}
+
+Persistent causal state can enrich operating-system enforcement only when it is
+engineered as a constrained evidence and policy pipeline, not as an opaque model
+placed in the syscall path. Unix-AGB's central pattern is:
+
+\begin{center}
+exact events $\rightarrow$ isolated persistent state $\rightarrow$ validated
+summary $\rightarrow$ deterministic policy $\rightarrow$ authenticated,
+expiring denial $\rightarrow$ scoped kernel enforcement.
+\end{center}
+
+The durable boundaries are the contribution: canonical facts remain separate
+from derived state; identity survives PID reuse; uncertainty becomes
+\texttt{ABSTAIN}; only denial is compiled; audit precedes restriction; and the
+listener remains available while replaceable policy machinery recovers. The
+current evidence shows that these mechanisms can be assembled and tested in a
+packaged, opt-in Linux prototype. It does not yet show production readiness or
+general unknown-attack detection. Advancing from mechanism to security claim
+requires the frozen promotion matrix: independent live Gate 3 decision binding,
+concurrent namespace isolation, endurance and resource bounds, authenticated
+update and rollback, failure injection, real application pilots, and multi-VM
+lifecycle validation under one fixed revision and artifact.
+
+\begin{thebibliography}{99}
+
+\bibitem{lsm}
+C. Wright et al.,
+\emph{Linux Security Modules: General Security Support for the Linux Kernel},
+11th USENIX Security Symposium, 2002.
+
+\bibitem{selinux}
+P. Loscocco and S. Smalley,
+\emph{Integrating Flexible Support for Security Policies into the Linux
+Operating System}, USENIX Annual Technical Conference, 2001.
+
+\bibitem{apparmor}
+Linux Kernel Documentation,
+\emph{AppArmor}, \url{https://docs.kernel.org/admin-guide/LSM/apparmor.html}.
+
+\bibitem{seccomp}
+Linux Kernel Documentation,
+\emph{Seccomp BPF User Notification},
+\url{https://docs.kernel.org/userspace-api/seccomp_filter.html}.
+
+\bibitem{falco}
+The Falco Authors,
+\emph{Falco: Cloud Native Runtime Security}, \url{https://falco.org/docs/}.
+
+\bibitem{backtracker}
+S. T. King and P. M. Chen,
+\emph{Backtracking Intrusions}, 19th ACM Symposium on Operating Systems
+Principles, 2003.
+
+\bibitem{camflow}
+T. Pasquier et al.,
+\emph{Practical Whole-System Provenance Capture}, ACM Symposium on Cloud
+Computing, 2017.
+
+\bibitem{denning}
+D. E. Denning,
+\emph{A Lattice Model of Secure Information Flow}, Communications of the ACM,
+19(5), 1976.
+
+\bibitem{cep}
+G. Cugola and A. Margara,
+\emph{Processing Flows of Information: From Data Stream to Complex Event
+Processing}, ACM Computing Surveys, 44(3), 2012.
+
+\bibitem{forrest}
+S. Forrest et al.,
+\emph{A Sense of Self for Unix Processes}, IEEE Symposium on Security and
+Privacy, 1996.
+
+\bibitem{architecture}
+Unix-AGB Project,
+\emph{Unix-AGB Architecture Specification},
+\texttt{docs/Unix\_AGB\_Architecture\_Specification\_PTBR.md}, 2026.
+
+\bibitem{contracts}
+Unix-AGB Project,
+\emph{AGB Contracts},
+\texttt{docs/contracts.md}, 2026.
+
+\bibitem{gate3}
+Unix-AGB Project,
+\emph{Gate 3 Dry-Run Policy Engine},
+\texttt{docs/gate3-policy-engine.md}, 2026.
+
+\bibitem{promotion}
+Unix-AGB Project,
+\emph{Gate 4 Promotion Protocol},
+\texttt{docs/report/106\_gate4\_promotion\_protocol\_20260817.md}, 2026.
+
+\bibitem{supervision}
+Unix-AGB Project,
+\emph{Gate 4 Gate 3 Service Supervision},
+\texttt{docs/report/108\_gate4\_gate3\_service\_supervision\_20260817.md}, 2026.
+
+\end{thebibliography}
+
+\end{document}

@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 PACKAGE = "unix-agb-egress-guardian-lab"
 
 
@@ -116,7 +116,7 @@ exit 0
   "handoff_key": "/etc/unix-agb/handoff.key",
   "gate3_cache": "/var/lib/unix-agb/gate3-cache.json",
   "gate3_cache_key": "/etc/unix-agb/gate3-cache.key",
-  "gate3_policy_revision": "policy:gate3-service-v1",
+  "gate3_policy_revision": "policy:bpf-observer-v1",
   "protected_cgroup": null
 }
 """)

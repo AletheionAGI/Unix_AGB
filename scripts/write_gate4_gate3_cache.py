@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 
-REVISION = "policy:gate3-service-v1"
+REVISION = "policy:bpf-observer-v1"
 
 
 def snapshot(namespace: str | None, secret: bytes, expires_epoch: int) -> dict[str, object]:

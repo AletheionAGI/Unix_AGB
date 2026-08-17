@@ -344,6 +344,17 @@ a bounded fail-closed launcher wait and the full matrix was rerun. This still
 uses controlled cache injection, so the real Gate 3 integration promotion
 domain remains unsupported. See report 108.
 
+Package 0.3.1 then replaced the handcrafted trigger with the three frozen Gate
+3 ensemble members and the real Rust policy compiler while the protected
+service remained alive. A controlled malicious trajectory rebound to the
+service's exact namespace produced one unanimous, revision-bound compiled
+`DENY` originating at `file.open`; atomic cache publication caused the next
+external connect to return `EACCES`, preserved an unprotected control, and an
+authenticated empty rotation restored baseline behavior. This validates the
+complete controlled model-to-kernel chain, but the rebound input was not newly
+captured BPF telemetry and is explicitly ineligible for promotion. See reports
+109–110.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;

@@ -93,10 +93,9 @@ class Gate3RuntimePolicy:
         decisions = [
             item for item in entries
             if item["namespace_id"] == namespace_id
-            and item["operation"] == "network.connect"
             and item["expires_epoch"] > now
         ]
         if not decisions:
             return False, "NO_ACTIVE_GATE3_DENY", None
         newest = max(decisions, key=lambda item: (item["state_revision"], item["expires_epoch"]))
-        return True, "ACTIVE_GATE3_TRAJECTORY_DENY", str(newest["decision_id"])
+        return True, f"ACTIVE_GATE3_TRAJECTORY_DENY:{newest['operation']}", str(newest["decision_id"])

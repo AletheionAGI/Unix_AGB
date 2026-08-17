@@ -1,0 +1,59 @@
+{
+  "artifacts": {
+    "gate3_audit_sha256": "4cbe3e5c79970230950f50eb557a2f260a8671eb2470a32d40a7c7b2a70cec54",
+    "gate3_cache_sha256": "aa2aac9de17fda4688e8567606a2dbd289b9ff95ea49ec2201cda38362e0321f",
+    "input_corpus_sha256": "0311e62732295922e160443f34aaeae169eed587ebae9e418e31a391e76a467e",
+    "package_sha256": "a14a3d342da5ba6b2ca5c49824784d99f6d414afcd3b5dc2b4fc556d784b0c00",
+    "pipeline_report_sha256": "00bcb131f7b058460be2450916aa99bb62c895caf9995626b1636c6c0d31fcde"
+  },
+  "asm_source_revision": "4c8eddf2f07d9aec800769323d7e1effbd64815a",
+  "base_revision": "ee8314c",
+  "checkpoint_sha256s": [
+    "96293688518fc0a2e83525af6ad28d16f39677980432762328bf4ad8aac654de",
+    "a1a67b4e066b0cabba00d0f17d27c77d29ac2d0ad3dfabc8baf61ff51dba9342",
+    "698979a684a02c4191e3a5ed09256df86d3e81939de988e0809e5433cbc90f4b"
+  ],
+  "controlled_chain_supported": true,
+  "environment": {
+    "enforcement_vm": "Ubuntu 24.04.4 LTS",
+    "inference_device": "NVIDIA GeForce RTX 4090"
+  },
+  "first_promotion_domain_supported": false,
+  "gate3": {
+    "cache_entries": 1,
+    "decision_effects": {
+      "ALLOW": 10,
+      "DENY": 1
+    },
+    "decision_id": "dec:1e0cf86bbd384ba4b96424cede3ba1ac330bc2256b64b7a7bc7d4a473851f236",
+    "disagreement_rate": 0.0,
+    "events": 11,
+    "member_inferences": 3,
+    "originating_operation": "file.open",
+    "policy_revision": "policy:bpf-observer-v1",
+    "trajectory_count": 1
+  },
+  "guardian_audit": {
+    "allow": 575,
+    "deny": 1,
+    "latency_us": {
+      "max": 418,
+      "p50": 248,
+      "p95": 327,
+      "p99": 387
+    },
+    "records": 576
+  },
+  "kernel_transition": {
+    "authenticated_empty_rotation_recovered": true,
+    "baseline_result": "ECONNREFUSED",
+    "control_result_during_deny": "ECONNREFUSED",
+    "protected_result_after_cache_publication": "EACCES",
+    "published_after_attempt": 572,
+    "purge_left_zero_residue": true
+  },
+  "limitation": "The ensemble input was a frozen controlled malicious trajectory explicitly rebound by an agent-broker adapter to the live namespace; it was not newly captured BPF telemetry.",
+  "package": "unix-agb-egress-guardian-lab_0.3.1_all.deb",
+  "promotion_status": "controlled-prototype",
+  "proof": "unix-agb-gate4-live-gate3-ensemble-v1"
+}

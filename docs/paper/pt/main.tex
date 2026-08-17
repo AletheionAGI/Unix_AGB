@@ -1,0 +1,602 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{url}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black,
+  citecolor=blue!55!black,
+  pdftitle={Estado causal persistente para enforcement no sistema operacional}
+}
+
+\title{Estado Causal Persistente para Enforcement no Sistema Operacional\\
+\large Engenharia de um Runtime de Política Linux com Estado, Auditoria e Falha Fechada}
+\author{Projeto Unix-AGB}
+\date{17 de agosto de 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Mecanismos tradicionais de enforcement no sistema operacional decidem a partir
+da requisição atual: executável, credencial, caminho, endereço de rede ou rótulo
+estático. Essa visão local é eficiente e confiável, mas não expressa diretamente
+um risco que emerge de uma sequência de ações individualmente comuns. O Unix-AGB
+(Aletheion Guard Bridge) investiga uma arquitetura complementar na qual eventos
+normalizados do kernel atualizam estado causal persistente e isolado por
+namespace; uma camada determinística de política compila apenas decisões
+restritivas em registros de enforcement de curta duração. Eventos exatos
+permanecem como verdade histórica, estado aprendido continua substituível e o
+Linux preserva a autoridade final de enforcement. Este artigo explica a
+engenharia desse pipeline: contratos, identidade, ordenação, persistência,
+revisões de política, caches autenticados, handoff por seccomp user notification,
+recuperação, empacotamento e validação experimental. Também delimita o resultado:
+o sistema atual é um protótipo controlado com enforcement de egress empacotado,
+opt-in e limitado a processos lançados pelo mecanismo; não é um serviço de
+segurança de produção e ainda não demonstra eficácia contra ataques naturais
+desconhecidos.
+\end{abstract}
+
+\section{O problema de engenharia}
+
+Considere dois processos realizando a mesma operação terminal: abrir uma
+credencial ou conectar a um endereço externo. Um pode ter seguido um fluxo
+normal de configuração; o outro pode ter executado uma ferramenta incomum,
+estabelecido conectividade externa e só então acessado o recurso sensível. Uma
+regra sem estado vê requisições terminais idênticas. Um sistema com estado
+consegue distinguir os históricos, mas introduzir estado na política do sistema
+operacional impõe requisitos difíceis:
+
+\begin{itemize}[leftmargin=*]
+  \item eventos precisam de ordem e identidade estável;
+  \item estado deve sobreviver a reinícios sem aceitar corrupção ou rollback;
+  \item saída de modelo não pode virar verdade histórica nem conceder acesso;
+  \item enforcement precisa ser determinístico, limitado e disponível durante
+        falhas do plano de controle;
+  \item toda ação negativa deve apontar para evidência durável e revisão exata
+        de política;
+  \item recuperação não pode ampliar uma negação para processos alheios.
+\end{itemize}
+
+O Unix-AGB atende a essas restrições separando observação, evidência canônica,
+inferência de estado, compilação de política e enforcement no kernel. Essa
+separação é mais importante que qualquer motor de estado específico.
+
+Neste artigo, \emph{estado causal} significa estado dependente de trajetória
+cuja interpretação de política depende de eventos predecessores ordenados no
+mesmo namespace de segurança; não reivindicamos identificação causal no sentido
+estatístico ou intervencionista. Portanto, o Unix-AGB não é primordialmente um
+novo detector de trajetórias. É uma arquitetura para compilar com segurança
+estado persistente e isolado por namespace em restrições de curta duração
+voltadas ao kernel. O motor de estado determina quando uma trajetória justifica
+restrição; o Unix-AGB determina como essa conclusão pode afetar o enforcement
+sem dar ao motor autoridade para ampliar privilégios.
+
+\subsection*{Contribuições}
+
+Este trabalho apresenta quatro contribuições:
+
+\begin{enumerate}[leftmargin=*]
+  \item uma arquitetura de política para sistema operacional que separa estado
+        causal persistente, evidência canônica e enforcement determinístico;
+  \item um modelo de compilação deny-only no qual estado aprendido pode
+        restringir, mas não ampliar privilégios;
+  \item um pipeline de enforcement ciente de reinícios e revisões, com registros
+        autenticados e expirantes de política e auditoria negativa durável; e
+  \item um protótipo Linux experimental que demonstra enforcement seccomp com
+        escopo de namespace, recuperação, rollback e semântica de falhas.
+\end{enumerate}
+
+\section{Relação com mecanismos de segurança existentes}
+
+Linux Security Modules fornece uma infraestrutura comum no kernel para sistemas
+de controle de acesso obrigatório como SELinux e AppArmor
+~\cite{lsm,selinux,apparmor}. Seccomp user notification permite mediar em
+userspace syscalls selecionadas~\cite{seccomp}, enquanto sistemas baseados em
+eBPF aproximam observação programável e detecção de runtime dos eventos do
+kernel~\cite{falco}. O Unix-AGB não substitui esses mecanismos: usa superfícies
+existentes de enforcement Linux como última etapa de um pipeline de estado e
+política versionado separadamente.
+
+Trabalhos anteriores reconstruíram históricos de ataque a partir de proveniência
+do sistema operacional~\cite{backtracker,camflow}, rastrearam fluxo de informação
+e taint~\cite{denning}, correlacionaram streams com processamento de eventos
+complexos e com estado~\cite{cep} e aprenderam comportamento anômalo de syscalls
+~\cite{forrest}. EDRs comerciais baseados em comportamento seguem um padrão
+operacional relacionado, embora sua semântica interna raramente constitua um
+contrato público de sistemas. Esses trabalhos mostram que históricos podem
+melhorar detecção e investigação. A questão distinta tratada aqui é como uma
+conclusão persistente sobre trajetória se torna uma restrição de kernel compacta,
+autenticada, expirante, vinculada a revisão, incapaz de conceder privilégio e
+auditável através de reinício, rollback e falha de componentes. Qualidade de
+detecção fica deliberadamente fora da contribuição central: FSMs, regras de
+sequência, janelas, proxies e ASM-CM entram pela mesma fronteira de motor.
+
+\section{Decomposição do sistema}
+
+A arquitetura é um pipeline de fronteiras de confiança estreitas:
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.20\textwidth} >{\raggedright\arraybackslash}p{0.70\textwidth}}
+\toprule
+Camada & Responsabilidade \\
+\midrule
+Linux e coletores & Observar operações de processo, arquivo, identidade e rede; fornecer fatos estáveis do kernel e hooks de enforcement. \\
+Event gateway & Validar schema, identidade, ordem, proveniência e tamanho antes de aceitar um evento. \\
+Store canônico & Preservar fatos exatos em append-only; rejeitar duplicatas e replay de sequência. \\
+Motor de estado & Manter estado limitado por namespace e emitir resumo com revisão, sinais, evidências e confiança opcional. \\
+Motor de política & Aplicar invariantes determinísticas e traduzir estado validado em \texttt{ALLOW}, \texttt{DENY} ou \texttt{ABSTAIN}. \\
+Cache compilado & Reter somente registros \texttt{DENY} autenticados, versionados e expirantes na borda de enforcement. \\
+Adapter de enforcement & Vincular decisão compilada a um sujeito exato visível ao kernel e produzir resultado como \texttt{EACCES}. \\
+Leitor opcional & Produzir explicações legíveis fora do caminho síncrono de enforcement. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O store canônico e o motor de estado respondem a perguntas diferentes. O store
+responde ``o que foi observado exatamente?''. O motor responde ``qual estado de
+segurança limitado decorre do histórico aceito?''. Checkpoint, representação
+neural ou acumulador de regras são artefatos derivados: podem ser descartados e
+reconstruídos. A evidência canônica nunca deve ser reescrita silenciosamente para
+concordar com eles.
+
+\section{Eventos canônicos e identidade estável}
+
+\subsection{Contrato de evento}
+
+Cada evento aceito contém versão de schema, identificador global único,
+sequência por namespace, tempos de parede e monotônico, host, namespace,
+sujeito, operação, recurso, resultado solicitado ou observado, revisão de
+política, rótulos e proveniência. O vocabulário inicial contém
+\texttt{process.exec}, \texttt{process.exit}, \texttt{file.open},
+\texttt{network.connect} e \texttt{identity.change}.
+
+O contrato privilegia metadata. Ele não exige conteúdo de arquivo, payload de
+pacote, segredo ou prompt. Resolver conteúdo seria uma operação autorizada
+separada. Isso reduz exposição de privacidade e material controlado por atacante
+no plano de política.
+
+\subsection{Reuso de PID é um erro de identidade}
+
+PID é reciclável. Estado indexado apenas por PID pode transferir o histórico de
+um processo encerrado para outro. O Unix-AGB usa:
+
+\begin{center}
+\texttt{process:<boot-id>:<pid>:<start-time-ns>}
+\end{center}
+
+O boot ID separa reinicializações; o tempo de início separa reutilizações dentro
+do mesmo boot. O gateway recalcula o namespace esperado e rejeita divergências.
+No handoff do Gate 4, launcher e guardian derivam a identidade
+independentemente de \texttt{/proc}; a mensagem é recusada se o namespace
+declarado não corresponder ao processo vivo.
+
+\subsection{Ordenação e lacunas}
+
+A sequência cresce estritamente dentro de cada namespace. IDs duplicados e
+sequências não crescentes são rejeitados antes de alterar o índice em memória.
+Uma lacuna não é tratada como ausência benigna: torna o estado incompleto até
+uma política explícita de ressincronização. Tempo de parede é descritivo;
+sequência e tempo monotônico determinam a ordem causal.
+
+Essa regra impede uma falha comum: interpretar perda de telemetria como prova de
+que nada ocorreu.
+
+\section{Estado causal persistente}
+
+\subsection{Transição isolada por namespace}
+
+O motor consome um evento validado por vez e emite
+\texttt{SecurityStateSummary}. Sua revisão deve corresponder à sequência aceita.
+O resumo contém faixa de risco, sinais, IDs de evidência, nome do motor,
+fingerprint do checkpoint quando aplicável e horário. Consulta e atualização
+exigem namespace exato; estado não é compartilhado implicitamente entre
+processos, usuários, containers, serviços, agentes ou tenants.
+
+Um exemplo determinístico mínimo memoriza uma execução, depois uma conexão
+externa e finalmente um acesso a credencial. O último evento se torna elevado
+somente quando as relações anteriores existem no mesmo namespace. A propriedade
+central é o contrato de transição:
+
+\[
+S_{n+1} = F(S_n, E_{n+1}, C, R)
+\]
+
+onde $S_n$ é o estado do namespace, $E_{n+1}$ é o próximo evento canônico, $C$
+é o fingerprint de configuração e $R$ é a revisão do motor ou checkpoint. Todo
+consumidor deve identificar os quatro elementos.
+
+\subsection{Motores substituíveis}
+
+O Unix-AGB expõe uma fronteira de motor de estado em vez de acoplar política a
+um modelo. Máquinas de estado, regras de sequência, janelas, proxy persistente e
+adapters ASM-CM podem ser comparados pelos mesmos contratos. Isso viabiliza
+baselines e impede que inferência aprendida redefina o protocolo de política.
+
+O histórico experimental importa. Ensaios iniciais de generalização causal
+foram negativos; identificadores canônicos locais à trajetória corrigiram uma
+falha de representação e um ensemble congelado de três seeds passou num teste
+sintético separado. Isso demonstra mecanismo e família controlada, não detecção
+de ataques naturais desconhecidos. Por isso, divergência entre modelos resulta
+por padrão em \texttt{ABSTAIN}, e inferência neural fica fora do hot path.
+
+\subsection{Snapshots atômicos e restore}
+
+Estado persistente só é útil se o restore for rigoroso. O protocolo vincula:
+
+\begin{itemize}[leftmargin=*]
+  \item versão do formato;
+  \item fingerprint do motor;
+  \item fingerprint da configuração;
+  \item estado completo e ordenado dos namespaces;
+  \item checksum ou autenticação.
+\end{itemize}
+
+A gravação usa arquivo temporário no mesmo diretório, flush, \texttt{fsync},
+rename atômico e \texttt{fsync} do diretório. Se a persistência falha, a
+atualização em memória é revertida. Restore rejeita snapshot corrompido,
+incompatível ou de outra configuração em vez de inventar estado permissivo.
+
+Checksums detectam corrupção acidental. Snapshots de política adicionam HMAC,
+pois quem consegue editar o estado também consegue recalcular um hash comum.
+
+\section{Do estado à política}
+
+\subsection{Álgebra pequena de enforcement}
+
+O core usa somente três efeitos:
+
+\begin{description}[leftmargin=2.4cm,style=nextline]
+  \item[\texttt{ALLOW}] Nenhum invariante restritivo foi encontrado. No Gate 3
+        atual é resultado de shadow/auditoria, não permissão compilada.
+  \item[\texttt{DENY}] Estado e política validados justificam restrição.
+  \item[\texttt{ABSTAIN}] Evidência, confiança, revisão, persistência ou
+        integridade contratual não bastam para decisão confiável.
+\end{description}
+
+Avisos são metadata de auditoria, não uma quarta ação do kernel. Assim, a
+álgebra permanece pequena e avaliações de domínio passam por adapter antes da
+camada de enforcement.
+
+\subsection{Ordem da decisão e autoridade monotônica}
+
+O Gate 3 valida configuração, contratos, igualdade de namespace, revisão de
+política e revisão de estado. Estado \texttt{restricted} ou
+\texttt{quarantined} produz \texttt{DENY}. Estado aprendido elevado exige
+evidências, confiança mínima e fingerprint do checkpoint. Estado normal ou de
+monitoramento produz \texttt{ALLOW} em shadow. Entrada desconhecida,
+desatualizada, incompleta ou inconsistente produz \texttt{ABSTAIN} fail-closed.
+
+Somente \texttt{DENY} é compilado. Nem o modelo nem cache ausente fabricam
+permissão. A política Linux de base conserva autoridade; a camada com estado
+pode manter ou reduzir privilégios, nunca ampliá-los.
+
+\subsection{Durabilidade antes da restrição}
+
+Uma decisão negativa é anexada à auditoria e sincronizada antes de entrar no
+cache. Se a persistência falha, o efeito vira \texttt{ABSTAIN} com reason code
+explícito. Registros positivos ou de abstention podem usar sincronização em
+grupo, mas \texttt{DENY} força durabilidade imediata.
+
+Isso estabelece um invariante recuperável:
+
+\begin{center}
+\textit{se o enforcement observa uma negação compilada, a evidência de auditoria
+dessa negação já está durável.}
+\end{center}
+
+\section{Compilação autenticada de decisões}
+
+Uma decisão compilada vincula namespace completo, operação, SHA-256 do recurso
+canônico, revisões de política e estado, digest das evidências, ID e expiração.
+O cache aceita somente \texttt{DENY}. Seu snapshot autentica registros ordenados
+e revisão ativa com HMAC-SHA-256.
+
+Lookup retorna \texttt{ABSTAIN} em miss, expiração, revisão incompatível ou
+estado obsoleto. Rotação e rollback limpam estado incompatível. Um snapshot
+antigo não pode ser renomeado como política nova. A projeção de runtime do Gate
+4 ainda retém o último snapshot autenticado quando um reload é inválido; política
+inicial inválida impede ativação, enquanto rotação vazia autenticada ou expiração
+remove a restrição.
+
+O protótipo atual de supervisão de serviço converte qualquer \texttt{DENY} ativo
+no nível da trajetória em contenção de egress externo para o namespace exato.
+A negação pode se originar numa leitura de credencial, escrita de persistência,
+execução administrativa ou evento de rede; a operação originária permanece na
+auditoria. Esse mapeamento é amplo e não deve ser chamado de
+destination-specific: o runtime verifica namespace, revisão e expiração, mas
+não compara o destino interceptado ao digest de recurso compilado.
+
+\section{A borda de enforcement do Gate 4}
+
+\subsection{Intercepção antes do exec}
+
+O launcher opt-in cria o processo protegido e instala um filtro seccomp com user
+notification antes de liberá-lo para \texttt{exec}. Isso fecha a corrida em que
+a aplicação conectaria antes da proteção. O descritor do listener e um adapter
+limitado para leitura de memória são transferidos ao guardian persistente por
+socket Unix.
+
+O handoff é autenticado por credenciais do peer, HMAC, revisão, nonce e expiração
+monotônica curta. Descritores passam via \texttt{SCM\_RIGHTS}. O guardian valida
+grupo de processos e recalcula o namespace. Replay, peer errado, revisão
+obsoleta, expiração, namespace divergente ou transferência incompleta resultam
+em rejeição.
+
+\subsection{Decisão em \texttt{connect}}
+
+Para cada notificação, o guardian:
+
+\begin{enumerate}[leftmargin=*]
+  \item valida que a notificação continua viva;
+  \item resolve a thread para o processo do thread group;
+  \item confere o escopo exato;
+  \item lê no máximo 128 bytes do \texttt{sockaddr};
+  \item permite loopback e sockets Unix conforme a política congelada;
+  \item consulta o cache Gate 3 autenticado para egress externo;
+  \item grava e sincroniza o registro de enforcement;
+  \item retorna \texttt{EACCES} para negação correspondente ou continua a
+        syscall nos demais casos.
+\end{enumerate}
+
+Família desconhecida, tamanho inválido, falha de leitura ou falha do adapter
+tomam caminho fail-closed limitado ao alvo protegido. Processos fora do escopo
+não herdam a negação.
+
+\subsection{Propriedade do listener e recuperação}
+
+Experimentos iniciais revelaram a diferença entre queda do worker de política e
+perda do listener. Se o dono do listener seccomp morre, a syscall não recebe
+necessariamente \texttt{EACCES}; pode ficar bloqueada ou seguir semântica de
+teardown do kernel. Chamar isso de ``fail closed'' esconderia falha de
+disponibilidade.
+
+A solução mantém o listener no guardian e torna o worker substituível. IDs de
+notificação são validados antes da resposta; falhas consomem orçamento limitado
+de restart e usam fallback com escopo. Deadlines antes do lease e teardown do
+processo protegido limitam casos em que ninguém assumiu a notificação com
+segurança. A recuperação nunca amplia negação para outro processo.
+
+\section{Empacotamento e operação}
+
+O runtime de laboratório é um pacote Debian opt-in com unidade systemd, conta
+dedicada, configuração em \texttt{/etc/unix-agb}, sockets em
+\texttt{/run/unix-agb}, estado e auditoria em \texttt{/var/lib/unix-agb} e
+chaves controladas por root. A configuração é vinculada a revisão e desabilitada
+por padrão. A unidade usa hardening como \texttt{NoNewPrivileges},
+\texttt{ProtectSystem=strict}, temporário privado, bounding de capabilities e
+caminhos de escrita explícitos.
+
+Testes cobrem instalação, default inativo, ativação, restart, daemon reload,
+reboot, upgrade, disable, purge, remoção de conta, sockets e resíduos. Testes
+negativos encontraram uma corrida: systemd indicava serviço simples ativo antes
+do socket de controle existir. O launcher agora espera por intervalo limitado e
+falha antes de liberar o filho se readiness não chegar.
+
+Isso mostra por que packaging faz parte da segurança. Lógica correta no processo
+não garante ordem de boot, upgrade, propriedade de segredo ou recuperação.
+
+\section{Evidência experimental}
+
+O repositório preserva protocolos, tentativas negativas, fingerprints e
+relatórios, em vez de publicar somente sucessos. A progressão inclui:
+
+\begin{itemize}[leftmargin=*]
+  \item prova causal com operação terminal idêntica e decisões shadow diferentes;
+  \item Gate 3 dry-run com revisões, auditoria durável, cache deny-only
+        autenticado, expiração, corrupção e isolamento;
+  \item piloto seccomp user notification retornando \texttt{EACCES};
+  \item concorrência, overload, timeout e o resultado negativo de perda do
+        listener;
+  \item guardian com listener retido e recuperação do worker;
+  \item enforcement empacotado e opt-in em VMs Ubuntu 24.04 e 26.04;
+  \item transição de serviço persistente entre política vazia autenticada,
+        negação no namespace exato, retenção após reload corrompido e retorno a
+        política vazia autenticada.
+\end{itemize}
+
+As amostras variam de dezenas de microssegundos no guardian a poucos
+milissegundos em brokers concorrentes. Elas caracterizam fronteiras controladas,
+não capacidade de produção. Na supervisão, a aplicação protegida mudou de uma
+tentativa externa permitida para \texttt{EACCES}, reteve negação após cache
+malformado e recuperou após rotação vazia autenticada; o controle permaneceu
+inalterado.
+
+\begin{center}
+\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.43\textwidth} >{\raggedright\arraybackslash}p{0.47\textwidth}}
+\toprule
+Experimento & Resultado observado \\
+\midrule
+Guardian com listener retido, 256 chamadas-alvo & 256/256 retornaram \texttt{EACCES}; latência de decisão de 44~$\mu$s p50, 49~$\mu$s p95 e 68~$\mu$s p99 \\
+Broker concorrente, 256 chamadas-alvo & 256/256 retornaram \texttt{EACCES}; 1,148~ms p50, 1,939~ms p95 e 2,366~ms p99 \\
+Falha de worker em voo & A notificação pendente exata recebeu \texttt{EACCES} em 123~$\mu$s; worker substituto pronto em 9,839~ms \\
+Enforcement exact-launch em VM & Conexão externa protegida recebeu \texttt{EACCES}; loopback e controle não protegido permaneceram inalterados \\
+Transições do cache autenticado & Reload corrompido reteve a última negação válida; rotação vazia autenticada a removeu \\
+Auditoria na supervisão de serviço & 191~$\mu$s p50 e 276~$\mu$s p95/p99, incluindo auditoria durável \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A tabela relata fronteiras experimentais distintas e não deve ser interpretada
+como uma única distribuição de latência end-to-end. Em particular, o
+microbenchmark do guardian, o broker concorrente, as VMs empacotadas e a
+supervisão usaram workloads controlados diferentes.
+
+Uma transição posterior substituiu o trigger artesanal pelo ensemble congelado
+de três membros e pelo compilador real de política Gate 3 enquanto o serviço
+protegido permanecia vivo. O \texttt{DENY} autenticado, originado em
+\texttt{file.open}, fez a conexão externa seguinte receber \texttt{EACCES}.
+Entretanto, a entrada foi uma trajetória controlada congelada e explicitamente
+rebound ao namespace vivo, não telemetria BPF recém-capturada. A matriz
+congelada mantém o Gate 4 como protótipo controlado.
+
+\section{Semântica de falha}
+
+``Fail closed'' precisa nomear escopo e consequência. O Unix-AGB distingue:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{abstention de política}: não há decisão confiável derivada de estado;
+  \item \textbf{negação com escopo}: o request protegido recebe \texttt{EACCES};
+  \item \textbf{teardown com escopo}: o workload é encerrado quando resposta
+        segura não pode ser garantida;
+  \item \textbf{continuidade da política-base}: Linux continua ativo se modelo
+        ou plano de controle falha;
+  \item \textbf{falha de disponibilidade}: request trava ou perde resposta útil,
+        sem ser indevidamente declarado como negação bem-sucedida.
+\end{itemize}
+
+Esse vocabulário obriga o projeto a tratar separadamente telemetria ausente,
+lacunas, snapshot corrompido, decisão expirada, queda de worker, perda de
+listener, falha de auditoria, rollback e corrida de restart.
+
+\section{Propriedades e riscos residuais}
+
+Os contratos implementados sustentam propriedades concretas:
+
+\begin{itemize}[leftmargin=*]
+  \item identidade estável resiste a reuso de PID;
+  \item namespace exato limita vazamento de estado entre processos;
+  \item replay e sequência preservam ordem;
+  \item cache autenticado e revision-bound resiste a substituição não autorizada;
+  \item compilação deny-only impede ampliação de privilégio por modelo;
+  \item expiração e rotação vazia autenticada fornecem rollback limitado;
+  \item auditoria durável precede enforcement negativo;
+  \item verificação independente vincula listener ao alvo vivo.
+\end{itemize}
+
+Os riscos residuais são relevantes. Coletor privilegiado comprometido pode
+forjar observações; kernel comprometido derrota observação e enforcement;
+chaves HMAC precisam de provisionamento real; binding por destino está
+incompleto na projeção atual; attachment sistêmico não cooperativo não existe;
+eficácia em telemetria natural não foi provada; e fail-closed amplo pode virar
+negação de serviço. São bloqueadores de promoção, não detalhes editoriais.
+
+\section{Por que o estado causal fica ao lado do kernel}
+
+O protótipo ainda não justifica kernel próprio. Linux já fornece as superfícies
+experimentais: observação por BPF/audit, identidade de processo, credenciais de
+peer, cgroups, systemd, seccomp user notification e LSMs. Estado causal,
+checkpoints, revisão, auditoria e inferência opcional evoluem mais rápido e têm
+superfície de falha maior que um hook mínimo.
+
+Mantê-los em userspace permite restart, substituição, comparação com baselines e
+abstention explícita. A borda recebe uma restrição compacta, autenticada e
+expirante, não um modelo. Trabalho de kernel só deve ser considerado se medições
+revelarem hook ausente, identidade indisponível, latência inaceitável ou
+propriedade impossível nas interfaces atuais.
+
+\section{Conclusão}
+
+Estado causal persistente pode enriquecer enforcement somente quando projetado
+como pipeline restrito de evidência e política, não como modelo opaco no hot
+path. O padrão do Unix-AGB é:
+
+\begin{center}
+eventos exatos $\rightarrow$ estado persistente isolado $\rightarrow$ resumo
+validado $\rightarrow$ política determinística $\rightarrow$ negação autenticada
+e expirante $\rightarrow$ enforcement com escopo.
+\end{center}
+
+As fronteiras duráveis são a contribuição: fatos separados de estado derivado;
+identidade resistente a PID reuse; incerteza como \texttt{ABSTAIN}; apenas
+\texttt{DENY} compilado; auditoria antes da restrição; listener disponível
+durante recuperação da política. A evidência atual mostra que os mecanismos
+podem ser montados e testados num protótipo Linux empacotado e opt-in. Não mostra
+prontidão de produção nem detecção geral de ataques desconhecidos. A promoção
+exige a matriz congelada: binding independente e vivo de decisão Gate 3,
+isolamento concorrente, endurance, recursos, update/rollback autenticado,
+injeção de falhas, aplicações reais e lifecycle multi-VM sob uma única revisão
+e artefato.
+
+\begin{thebibliography}{99}
+
+\bibitem{lsm}
+C. Wright et al.,
+\emph{Linux Security Modules: General Security Support for the Linux Kernel},
+11th USENIX Security Symposium, 2002.
+
+\bibitem{selinux}
+P. Loscocco e S. Smalley,
+\emph{Integrating Flexible Support for Security Policies into the Linux
+Operating System}, USENIX Annual Technical Conference, 2001.
+
+\bibitem{apparmor}
+Linux Kernel Documentation,
+\emph{AppArmor}, \url{https://docs.kernel.org/admin-guide/LSM/apparmor.html}.
+
+\bibitem{seccomp}
+Linux Kernel Documentation,
+\emph{Seccomp BPF User Notification},
+\url{https://docs.kernel.org/userspace-api/seccomp_filter.html}.
+
+\bibitem{falco}
+The Falco Authors,
+\emph{Falco: Cloud Native Runtime Security}, \url{https://falco.org/docs/}.
+
+\bibitem{backtracker}
+S. T. King e P. M. Chen,
+\emph{Backtracking Intrusions}, 19th ACM Symposium on Operating Systems
+Principles, 2003.
+
+\bibitem{camflow}
+T. Pasquier et al.,
+\emph{Practical Whole-System Provenance Capture}, ACM Symposium on Cloud
+Computing, 2017.
+
+\bibitem{denning}
+D. E. Denning,
+\emph{A Lattice Model of Secure Information Flow}, Communications of the ACM,
+19(5), 1976.
+
+\bibitem{cep}
+G. Cugola e A. Margara,
+\emph{Processing Flows of Information: From Data Stream to Complex Event
+Processing}, ACM Computing Surveys, 44(3), 2012.
+
+\bibitem{forrest}
+S. Forrest et al.,
+\emph{A Sense of Self for Unix Processes}, IEEE Symposium on Security and
+Privacy, 1996.
+
+\bibitem{architecture}
+Projeto Unix-AGB,
+\emph{Especificação de Arquitetura Unix-AGB},
+\texttt{docs/Unix\_AGB\_Architecture\_Specification\_PTBR.md}, 2026.
+
+\bibitem{contracts}
+Projeto Unix-AGB,
+\emph{Contratos AGB},
+\texttt{docs/contracts.md}, 2026.
+
+\bibitem{gate3}
+Projeto Unix-AGB,
+\emph{Gate 3 Dry-Run Policy Engine},
+\texttt{docs/gate3-policy-engine.md}, 2026.
+
+\bibitem{promotion}
+Projeto Unix-AGB,
+\emph{Gate 4 Promotion Protocol},
+\texttt{docs/report/106\_gate4\_promotion\_protocol\_20260817.md}, 2026.
+
+\bibitem{supervision}
+Projeto Unix-AGB,
+\emph{Gate 4 Gate 3 Service Supervision},
+\texttt{docs/report/108\_gate4\_gate3\_service\_supervision\_20260817.md}, 2026.
+
+\end{thebibliography}
+
+\end{document}

@@ -48,7 +48,7 @@ class EgressGuardianPackagingTests(unittest.TestCase):
             self.assertIn(directive, unit)
         self.assertEqual(config["policy_revision"], "policy:gate4-egress-guardian-v3")
         self.assertEqual(config["mode"], "laboratory-gate3-service")
-        self.assertEqual(config["gate3_policy_revision"], "policy:gate3-service-v1")
+        self.assertEqual(config["gate3_policy_revision"], "policy:bpf-observer-v1")
 
     def test_runtime_rejects_disabled_configuration(self):
         runtime = ROOT / "deploy/agb-egress-guardian"

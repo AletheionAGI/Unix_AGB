@@ -17,7 +17,7 @@ Gate3RuntimePolicy = MODULE.Gate3RuntimePolicy
 
 
 class Gate4RuntimePolicyTests(unittest.TestCase):
-    revision = "policy:gate3-service-v1"
+    revision = "policy:bpf-observer-v1"
     secret = b"gate3-service-test-secret-32-bytes!!"
 
     def entry(self, namespace="process:test", expires=200):
@@ -53,7 +53,7 @@ class Gate4RuntimePolicyTests(unittest.TestCase):
     def test_active_exact_namespace_deny_is_selected(self):
         with tempfile.TemporaryDirectory() as directory:
             policy, _ = self.policy(directory, [self.entry()])
-            self.assertEqual(policy.decide("process:test", 100), (True, "ACTIVE_GATE3_TRAJECTORY_DENY", "dec:test"))
+            self.assertEqual(policy.decide("process:test", 100), (True, "ACTIVE_GATE3_TRAJECTORY_DENY:network.connect", "dec:test"))
             self.assertEqual(policy.decide("process:other", 100)[0], False)
             self.assertEqual(policy.decide("process:test", 200)[1], "NO_ACTIVE_GATE3_DENY")
 
@@ -78,6 +78,16 @@ class Gate4RuntimePolicyTests(unittest.TestCase):
             self.assertTrue(policy.decide("process:test", 100)[0])
             cache.write_bytes(self.snapshot([]))
             self.assertFalse(policy.decide("process:test", 100)[0])
+
+    def test_non_network_gate3_trigger_activates_future_egress_containment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            entry = self.entry()
+            entry["operation"] = "file.open"
+            entry["cache_key"] = entry["cache_key"].replace("network.connect", "file.open")
+            policy, _ = self.policy(directory, [entry])
+            deny, reason, _ = policy.decide("process:test", 100)
+            self.assertTrue(deny)
+            self.assertEqual(reason, "ACTIVE_GATE3_TRAJECTORY_DENY:file.open")
 
 
 if __name__ == "__main__":
