@@ -28,3 +28,8 @@ An outer seccomp profile has higher precedence than an inner user-notification
 filter when it returns an error action. In that environment the inner listener
 receives no valid notification, so an ordinary connection failure is not
 accepted as AGB enforcement evidence.
+
+The completed disposable pilot also observed repeated stale-listener wakeups
+returning `ENOENT`. They are counted and ignored without creating a decision.
+This behavior is acceptable only as diagnosed pilot telemetry; it must be
+bounded or eliminated before a long-lived broker is considered.

@@ -29,7 +29,7 @@ SCMP_SYS_CONNECT_X86_64 = 42
 SECCOMP_IOCTL_NOTIF_RECV = 0xC0502100
 SECCOMP_IOCTL_NOTIF_SEND = 0xC0182101
 SECCOMP_USER_NOTIF_FLAG_CONTINUE = 1
-NOTIFICATION = struct.Struct("<QIIiIQQQQQQ")
+NOTIFICATION = struct.Struct("<QIIiIQQQQQQQ")
 
 LIB.seccomp_init.argtypes = [ctypes.c_uint32]
 LIB.seccomp_init.restype = ctypes.c_void_p
@@ -112,6 +112,7 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
     child.close()
     listener = receive_listener(parent)
     decisions = []
+    stale_notifications = 0
     try:
         while True:
             exited, status = os.waitpid(pid, os.WNOHANG)
@@ -120,11 +121,18 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
                     "url": url,
                     "exit_code": os.waitstatus_to_exitcode(status),
                     "decisions": decisions,
+                    "stale_notifications": stale_notifications,
                 }
             if not select.select([listener], [], [], 0.1)[0]:
                 continue
             notification = bytearray(NOTIFICATION.size)
-            fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_RECV, notification, True)
+            try:
+                fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_RECV, notification, True)
+            except OSError as error:
+                if error.errno in {errno.ENOENT, errno.EINTR}:
+                    stale_notifications += 1
+                    continue
+                raise
             values = NOTIFICATION.unpack(notification)
             notification_id, notified_pid = values[0], values[1]
             args = values[6:]
