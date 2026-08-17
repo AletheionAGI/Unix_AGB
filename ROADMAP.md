@@ -261,6 +261,15 @@ without expanding ptrace authority. In-flight broker death, authenticated
 handoff, guardian failure, and protected-group teardown remain blockers. See
 report 96.
 
+The in-flight follow-up killed generation 1 after its eighth `RECV`, after a
+guardian-visible lease but before `SEND`. The retained notification ID remained
+valid. The guardian independently mapped TID to the protected TGID, returned
+`EACCES` in 123 µs, and made generation 2 ready in 9.839 ms. All 256 protected
+calls were denied, the out-of-scope probe remained allowed, and no teardown was
+needed. A crash between kernel `RECV` completion and lease publication,
+authenticated/revision-bound handoff, restart-loop bounds, and guardian failure
+with protected-cgroup teardown remain blockers. See report 97.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;

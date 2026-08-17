@@ -60,6 +60,9 @@ remains authoritative in `ROADMAP.md`.
 - report 96: retained-listener handoff through `SCM_RIGHTS` across an injected
   broker-generation crash, with complete target denial, out-of-scope isolation,
   and explicit Yama/in-flight-crash limitations.
+- report 97: recovery after broker death between seccomp `RECV` and `SEND`
+  through a guardian-visible lease, kernel ID validation, and independent TGID
+  verification, while preserving the pre-lease crash interval as a blocker.
 
 ## Administrative boundary
 
