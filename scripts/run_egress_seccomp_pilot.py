@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""Reversible seccomp-user-notify egress pilot for a disposable curl process."""
+
+from __future__ import annotations
+
+import argparse
+import array
+import ctypes
+import errno
+import fcntl
+import json
+import os
+import select
+import socket
+import struct
+import subprocess
+import time
+from pathlib import Path
+from typing import Any
+
+from agb_fake_asm.egress_policy import ExecutableEgressPolicy
+from bpf_to_events import decode_sockaddr
+
+LIB = ctypes.CDLL("libseccomp.so.2", use_errno=True)
+LIBC = ctypes.CDLL(None, use_errno=True)
+SCMP_ACT_NOTIFY = 0x7FC00000
+SCMP_ACT_ALLOW = 0x7FFF0000
+SCMP_SYS_CONNECT_X86_64 = 42
+SECCOMP_IOCTL_NOTIF_RECV = 0xC0502100
+SECCOMP_IOCTL_NOTIF_SEND = 0xC0182101
+SECCOMP_USER_NOTIF_FLAG_CONTINUE = 1
+NOTIFICATION = struct.Struct("<QIIiIQQQQQQ")
+
+LIB.seccomp_init.argtypes = [ctypes.c_uint32]
+LIB.seccomp_init.restype = ctypes.c_void_p
+LIB.seccomp_rule_add.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int, ctypes.c_uint]
+LIB.seccomp_rule_add.restype = ctypes.c_int
+LIB.seccomp_load.argtypes = [ctypes.c_void_p]
+LIB.seccomp_load.restype = ctypes.c_int
+LIB.seccomp_notify_fd.argtypes = [ctypes.c_void_p]
+LIB.seccomp_notify_fd.restype = ctypes.c_int
+LIB.seccomp_release.argtypes = [ctypes.c_void_p]
+LIBC.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+
+
+def install_filter() -> int:
+    if LIBC.prctl(38, 1, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "PR_SET_NO_NEW_PRIVS")
+    context = LIB.seccomp_init(SCMP_ACT_ALLOW)
+    if not context:
+        raise OSError(ctypes.get_errno(), "seccomp_init")
+    try:
+        if LIB.seccomp_rule_add(context, SCMP_ACT_NOTIFY, SCMP_SYS_CONNECT_X86_64, 0) != 0:
+            raise OSError(ctypes.get_errno(), "seccomp_rule_add(connect)")
+        if LIB.seccomp_load(context) != 0:
+            raise OSError(ctypes.get_errno(), "seccomp_load")
+        listener = LIB.seccomp_notify_fd(context)
+        if listener < 0:
+            raise OSError(ctypes.get_errno(), "seccomp_notify_fd")
+        return listener
+    finally:
+        LIB.seccomp_release(context)
+
+
+def filtered_curl(channel: socket.socket, curl: Path, url: str) -> None:
+    try:
+        listener = install_filter()
+        channel.sendmsg([b"ready"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [listener]))])
+        curl_pid = os.fork()
+        if curl_pid == 0:
+            os.execv(str(curl), [str(curl), "--silent", "--show-error", "--max-time", "4", url])
+        _, status = os.waitpid(curl_pid, 0)
+        os._exit(os.waitstatus_to_exitcode(status))
+    except BaseException as error:
+        channel.send(json.dumps({"error": str(error)}).encode())
+        os._exit(125)
+
+
+def receive_listener(channel: socket.socket) -> int:
+    message, ancillary, *_ = channel.recvmsg(64, socket.CMSG_LEN(array.array("i").itemsize))
+    if message != b"ready":
+        raise RuntimeError(f"filtered child failed before exec: {message.decode(errors='replace')}")
+    descriptors = array.array("i")
+    for level, kind, data in ancillary:
+        if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+            descriptors.frombytes(data[: descriptors.itemsize])
+    if not descriptors:
+        raise RuntimeError("seccomp listener was not received")
+    return descriptors[0]
+
+
+def read_sockaddr(pid: int, address: int, length: int) -> dict[str, object]:
+    if not 2 <= length <= 128:
+        raise ValueError("invalid sockaddr length")
+    memory = os.open(f"/proc/{pid}/mem", os.O_RDONLY)
+    try:
+        raw = os.pread(memory, length, address)
+    finally:
+        os.close(memory)
+    if len(raw) != length:
+        raise ValueError("truncated sockaddr from notified process")
+    return decode_sockaddr(raw.hex())
+
+
+def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str, Any]:
+    parent, child = socket.socketpair()
+    pid = os.fork()
+    if pid == 0:
+        parent.close()
+        os.setpgid(0, 0)
+        filtered_curl(child, curl, url)
+    child.close()
+    listener = receive_listener(parent)
+    decisions = []
+    try:
+        while True:
+            exited, status = os.waitpid(pid, os.WNOHANG)
+            if exited:
+                return {
+                    "url": url,
+                    "exit_code": os.waitstatus_to_exitcode(status),
+                    "decisions": decisions,
+                }
+            if not select.select([listener], [], [], 0.1)[0]:
+                continue
+            notification = bytearray(NOTIFICATION.size)
+            fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_RECV, notification, True)
+            values = NOTIFICATION.unpack(notification)
+            notification_id, notified_pid = values[0], values[1]
+            args = values[6:]
+            try:
+                resource = read_sockaddr(notified_pid, args[1], args[2])
+                resource["type"] = "network"
+                resource["fd"] = args[0]
+                executable = os.readlink(f"/proc/{notified_pid}/exe")
+                event = {
+                    "operation": "network.connect",
+                    "result": "requested",
+                    "subject": {"exe": executable},
+                    "resource": resource,
+                }
+                decision = policy.evaluate(event)
+            except (OSError, ValueError) as error:
+                resource = {"type": "network", "decode_error": str(error)}
+                executable = "<unavailable>"
+                decision = {"effect": "ABSTAIN", "reason": "DESTINATION_DECODE_FAILED"}
+            # At this enforcement boundary ABSTAIN is fail-closed for the scoped executable.
+            deny = decision["effect"] == "DENY" or (
+                decision["effect"] == "ABSTAIN" and executable == policy.executable
+            )
+            response = struct.pack(
+                "<Qqii",
+                notification_id,
+                0,
+                -errno.EACCES if deny else 0,
+                0 if deny else SECCOMP_USER_NOTIF_FLAG_CONTINUE,
+            )
+            fcntl.ioctl(listener, SECCOMP_IOCTL_NOTIF_SEND, response)
+            decisions.append({
+                "executable": executable,
+                "resource": resource,
+                "effect": "DENY" if deny else decision["effect"],
+                "policy_effect": decision["effect"],
+                "reason": decision["reason"],
+                "errno": errno.EACCES if deny else None,
+                "enforcement_applied": deny,
+            })
+    finally:
+        os.close(listener)
+        parent.close()
+        try:
+            os.killpg(pid, 9)
+        except ProcessLookupError:
+            pass
+        try:
+            os.waitpid(pid, 0)
+        except ChildProcessError:
+            pass
+
+
+def loopback_server() -> tuple[socket.socket, int, int]:
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+
+    pid = os.fork()
+    if pid == 0:
+        connection, _ = server.accept()
+        with connection:
+            connection.recv(4096)
+            connection.sendall(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+        os._exit(0)
+    return server, server.getsockname()[1], pid
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--curl", type=Path, default=Path("/usr/bin/curl"))
+    parser.add_argument("--external-url", default="https://example.com")
+    parser.add_argument("--output", type=Path, default=Path("var/benchmark/gate4-curl-egress-pilot.json"))
+    args = parser.parse_args()
+    curl = args.curl.resolve()
+    if not curl.is_file():
+        parser.error(f"curl executable not found: {curl}")
+    policy = ExecutableEgressPolicy(str(curl))
+    server, port, server_pid = loopback_server()
+    try:
+        loopback = supervise(curl, f"http://127.0.0.1:{port}", policy)
+    except BaseException:
+        try:
+            os.kill(server_pid, 9)
+        except ProcessLookupError:
+            pass
+        os.waitpid(server_pid, 0)
+        raise
+    finally:
+        server.close()
+    _, server_status = os.waitpid(server_pid, 0)
+    if server_status != 0:
+        raise RuntimeError("loopback test server failed")
+    external = supervise(curl, args.external_url, policy)
+    if loopback["exit_code"] != 0 or any(item["effect"] == "DENY" for item in loopback["decisions"]):
+        raise RuntimeError("loopback was not preserved")
+    external_denials = [item for item in external["decisions"] if item["effect"] == "DENY"]
+    if external["exit_code"] == 0 or not external_denials:
+        raise RuntimeError("external curl was not denied")
+    report = {
+        "proof": "unix-agb-executable-egress-seccomp-pilot-v1",
+        "scope": str(curl),
+        "loopback": loopback,
+        "external": external,
+        "external_denials": len(external_denials),
+        "denied_errno": errno.EACCES,
+        "system_wide_changes": False,
+        "rollback": "filtered curl process exited; seccomp filter and listener were destroyed",
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(report, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
