@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -239,6 +239,31 @@ benchmark-gate3-asm-pipeline:
 		--audit "$${AGB_GATE3_AUDIT:-var/gate3-asm-decisions.jsonl}" \
 		--cache "$${AGB_GATE3_CACHE:-var/gate3-asm-cache.json}" \
 		--output "$${AGB_GATE3_BENCHMARK_OUTPUT:-var/benchmark/gate3-asm-pipeline.json}"
+
+benchmark-gate3-asm-ensemble-pipeline:
+	cargo build --quiet --bin agb-policy-dry-run
+	AGB_GATE3_CACHE_KEY="$${AGB_GATE3_CACHE_KEY:-unix-agb-local-dry-run-only}" \
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/run_gate3_asm_pipeline.py \
+		--corpus "$${AGB_GATE3_CORPUS:-$${PWD}/var/telemetry/protected-lab/corpus.jsonl}" \
+		--ensemble-checkpoint "seed-1:$${ASM_CM_SEED1_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_1/candidate/checkpoint_final.pt}:$${ASM_CM_SEED1_SHA256:-96293688518fc0a2e83525af6ad28d16f39677980432762328bf4ad8aac654de}" \
+		--ensemble-checkpoint "seed-2:$${ASM_CM_SEED2_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_2/candidate/checkpoint_final.pt}:$${ASM_CM_SEED2_SHA256:-a1a67b4e066b0cabba00d0f17d27c77d29ac2d0ad3dfabc8baf61ff51dba9342}" \
+		--ensemble-checkpoint "seed-3:$${ASM_CM_SEED3_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_3/candidate/checkpoint_final.pt}:$${ASM_CM_SEED3_SHA256:-698979a684a02c4191e3a5ed09256df86d3e81939de988e0809e5433cbc90f4b}" \
+		--ensemble-disagreement-action "$${AGB_ENSEMBLE_DISAGREEMENT_ACTION:-abstain}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:-../gitlab/ASM/src}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:-4c8eddf2f07d9aec800769323d7e1effbd64815a}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--policy-revision "$${AGB_GATE3_POLICY_REVISION:-policy:bpf-observer-v1}" \
+		--minimum-confidence "$${AGB_GATE3_MIN_CONFIDENCE:-0.8}" \
+		--ttl-seconds "$${AGB_GATE3_TTL_SECONDS:-2}" \
+		--audit "$${AGB_GATE3_AUDIT:-var/gate3-asm-ensemble-decisions.jsonl}" \
+		--cache "$${AGB_GATE3_CACHE:-var/gate3-asm-ensemble-cache.json}" \
+		--output "$${AGB_GATE3_BENCHMARK_OUTPUT:-var/benchmark/gate3-asm-ensemble-pipeline.json}"
+
+plot-gate3-asm-ensemble:
+	MPLCONFIGDIR="$${PWD}/var/benchmark/.matplotlib" \
+	"$${ASM_PYTHON:-.venv/bin/python}" scripts/plot_gate3_asm_ensemble.py \
+		--report "$${AGB_GATE3_BENCHMARK_OUTPUT:-var/benchmark/gate3-asm-ensemble-pipeline.json}" \
+		--output-prefix "$${AGB_GATE3_CHART_PREFIX:-var/benchmark/gate3-asm-ensemble-pipeline}"
 
 gate4-reversible-denial:
 	cargo build --quiet --bin agb-lab-workload --bin agb-policy-dry-run

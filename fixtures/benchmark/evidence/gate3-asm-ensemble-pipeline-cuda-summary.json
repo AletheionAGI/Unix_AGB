@@ -1,0 +1,62 @@
+{
+  "benchmark": "unix-agb-gate3-asm-cm-ensemble-pipeline-v1",
+  "checkpoint_sha256s": [
+    "96293688518fc0a2e83525af6ad28d16f39677980432762328bf4ad8aac654de",
+    "a1a67b4e066b0cabba00d0f17d27c77d29ac2d0ad3dfabc8baf61ff51dba9342",
+    "698979a684a02c4191e3a5ed09256df86d3e81939de988e0809e5433cbc90f4b"
+  ],
+  "dataset_sha256": "ae165d68603180df880de933ed8fb6a84137aac14cc1e8bdab65de259dd53740",
+  "decision_effects": {
+    "ALLOW": 916,
+    "DENY": 71
+  },
+  "device": "cuda",
+  "enforcement_applied": false,
+  "ensemble": {
+    "deny_votes_required": 2,
+    "disagreement_action": "abstain",
+    "disagreement_rate": 0.0,
+    "disagreements": 0,
+    "inference_event_count": 141,
+    "member_inference_counts": {
+      "seed-1": 141,
+      "seed-2": 141,
+      "seed-3": 141
+    },
+    "total_member_inferences": 423
+  },
+  "event_count": 987,
+  "latency_us": {
+    "asm_cm": {
+      "p50": 66.361,
+      "p95": 50635.116,
+      "p99": 52521.903
+    },
+    "end_to_end": {
+      "p50": 211.401,
+      "p95": 54369.969,
+      "p99": 58597.834
+    },
+    "gate3_audit_cache": {
+      "p50": 147.411,
+      "p95": 3999.884,
+      "p99": 6645.889
+    }
+  },
+  "persistence_proofs": {
+    "audit_record_count": 987,
+    "cache_contains_only_deny": true,
+    "cache_entry_count": 71,
+    "every_response_enforcement_applied_false": true
+  },
+  "report_sha256": "62d068de5e53bfecbb97e8ec1adc1748c7bb96aaee3120b4b85d6a8c7da2db8c",
+  "source_revision": "4c8eddf2f07d9aec800769323d7e1effbd64815a",
+  "terminal_confusion": {
+    "abstain": 0,
+    "fn": 0,
+    "fp": 0,
+    "tn": 70,
+    "tp": 71
+  },
+  "trajectory_count": 141
+}

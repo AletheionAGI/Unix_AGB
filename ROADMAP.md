@@ -115,6 +115,16 @@ criteria with 100% accuracy/recall/precision and zero FP/FN, while recording
 evidence, not natural unknown-attack validation. See `docs/gate2b-v3-binding.md`,
 `docs/gate2b-v4-canonical-confirmation.md`, and `docs/gate2b-v5-ensemble.md`.
 
+Canonicalization and decision voting now also have reusable operational seams.
+The Gate 3 dry-run can load three telemetry-compatible checkpoints, records
+member disagreement, and defaults to `ABSTAIN` on a split vote; majority 2-of-3
+requires an explicit opt-in. This is pipeline plumbing, not validation of the
+frozen v4 models on natural telemetry. The subsequent three-seed CUDA dry-run
+was unanimous on all 987 protected-corpus events, retained TN=70/TP=71 with zero
+FP/FN/ABSTAIN, and measured 54.37 ms p95 end-to-end latency. This remains
+controlled-laboratory evidence with enforcement disabled. See
+`docs/asm-cm-operational-ensemble.md` and report 88.
+
 The repository now contains a deterministic `StateEngine` seam, a Python
 stateful proxy, and a real promoted-checkpoint ASM-CM adapter behind the
 Unix-socket boundary. Both have checksummed snapshots and participate in the

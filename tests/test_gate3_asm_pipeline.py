@@ -1,6 +1,6 @@
 import unittest
 
-from run_gate3_asm_pipeline import asm_decision_to_state
+from run_gate3_asm_pipeline import asm_decision_to_state, parse_ensemble_checkpoint
 
 
 class Gate3AsmStateTests(unittest.TestCase):
@@ -36,6 +36,22 @@ class Gate3AsmStateTests(unittest.TestCase):
             asm_decision_to_state(self.event(), self.result("ABSTAIN"))["risk_band"],
             "unknown",
         )
+
+    def test_ensemble_disagreement_is_explicit_in_state_signals(self):
+        result = self.result("ABSTAIN")
+        result["ensemble"] = {"disagreement": True}
+        state = asm_decision_to_state(self.event(), result)
+        self.assertEqual(state["engine"], "asm-cm")
+        self.assertIn("asm-cm-ensemble", state["signals"])
+        self.assertIn("asm-cm-member-disagreement", state["signals"])
+
+    def test_ensemble_checkpoint_parser_preserves_colons_in_path(self):
+        member, path, fingerprint = parse_ensemble_checkpoint(
+            "seed-1:/tmp/checkpoints:canonical/model.pt:" + "a" * 64
+        )
+        self.assertEqual(member, "seed-1")
+        self.assertEqual(str(path), "/tmp/checkpoints:canonical/model.pt")
+        self.assertEqual(fingerprint, "a" * 64)
 
 
 if __name__ == "__main__":

@@ -12,12 +12,21 @@ from .benchmark_engines import (
 from .persistent_engine import PersistentStatefulProxy, SnapshotError
 from .independent_corpus import IndependentCorpusError, freeze_manifest, load_independent_corpus
 from .policy_cache import DecisionCache
+from .canonicalization import (
+    CanonicalEntityEncoder,
+    canonicalize_trajectories,
+    canonicalize_trajectory,
+)
+from .ensemble import DecisionEnsemble, EnsemblePolicy
 
 __all__ = [
     "BenchmarkEngine",
     "AsmCmEngine",
     "AsmCmUnavailable",
     "DecisionCache",
+    "DecisionEnsemble",
+    "EnsemblePolicy",
+    "CanonicalEntityEncoder",
     "EventLocalEngine",
     "FakeAsmEngine",
     "PersistentStatefulProxy",
@@ -28,4 +37,6 @@ __all__ = [
     "IndependentCorpusError",
     "freeze_manifest",
     "load_independent_corpus",
+    "canonicalize_trajectories",
+    "canonicalize_trajectory",
 ]

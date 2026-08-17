@@ -37,6 +37,8 @@ remains authoritative in `ROADMAP.md`.
 - report 86: fresh Gate 2B v4 raw-versus-canonical, three-seed confirmation
   scaffold with original baselines and criteria.
 - report 87: frozen v4 canonical 2-of-3 ensemble confirmation on a new test.
+- report 88: three promoted ASM-CM seeds through the complete Gate 3 dry-run,
+  with unanimous votes, explicit disagreement telemetry, and CUDA latency.
 
 ## Administrative boundary
 

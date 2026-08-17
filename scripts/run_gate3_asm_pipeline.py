@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from agb_fake_asm import AsmCmEngine
+from agb_fake_asm import AsmCmEngine, DecisionEnsemble, EnsemblePolicy
 from agb_fake_asm.independent_corpus import freeze_manifest, load_independent_corpus
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +31,11 @@ def asm_decision_to_state(event: dict[str, Any], result: dict[str, Any]) -> dict
     signals = [str(result.get("reason", "ASM_CM_RESULT_UNSPECIFIED"))]
     if result.get("model_inference_performed"):
         signals.append("asm-cm-inference-performed")
+    ensemble = result.get("ensemble")
+    if ensemble:
+        signals.append("asm-cm-ensemble")
+        if ensemble.get("disagreement"):
+            signals.append("asm-cm-member-disagreement")
     return {
         "schema_version": "1.0",
         "namespace_id": event["namespace_id"],
@@ -39,10 +44,24 @@ def asm_decision_to_state(event: dict[str, Any], result: dict[str, Any]) -> dict
         "confidence": result.get("confidence"),
         "signals": signals,
         "evidence_ids": list(dict.fromkeys(result.get("evidence_ids", []))),
+        # The versioned state contract identifies the model family here;
+        # ensemble provenance remains explicit in signals and the report.
         "engine": "asm-cm",
         "checkpoint_fingerprint": result.get("checkpoint_fingerprint"),
         "updated_at": event["occurred_at"],
     }
+
+
+def parse_ensemble_checkpoint(spec: str) -> tuple[str, Path, str]:
+    """Parse MEMBER:PATH:SHA256 while allowing colons inside the path."""
+    try:
+        member, remainder = spec.split(":", 1)
+        path, fingerprint = remainder.rsplit(":", 1)
+    except ValueError as error:
+        raise ValueError("ensemble checkpoint must be MEMBER:PATH:SHA256") from error
+    if not member or not path or len(fingerprint) != 64:
+        raise ValueError("ensemble checkpoint must include member, path and SHA-256")
+    return member, Path(path), fingerprint
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -63,8 +82,21 @@ def latency_summary(values: list[float]) -> dict[str, float]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--corpus", type=Path, required=True)
-    parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--checkpoint-sha256", required=True)
+    parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--checkpoint-sha256")
+    parser.add_argument(
+        "--ensemble-checkpoint",
+        action="append",
+        default=[],
+        metavar="MEMBER:PATH:SHA256",
+        help="repeat exactly three times to enable an ASM-CM ensemble",
+    )
+    parser.add_argument(
+        "--ensemble-disagreement-action",
+        choices=("abstain", "majority"),
+        default="abstain",
+        help="abstain is the conservative operational default",
+    )
     parser.add_argument("--asm-source-root", type=Path, required=True)
     parser.add_argument("--asm-source-revision", required=True)
     parser.add_argument("--device", default="cuda")
@@ -80,6 +112,13 @@ def main() -> None:
     cache_key = os.environ.get("AGB_GATE3_CACHE_KEY", "")
     if not cache_key:
         parser.error("AGB_GATE3_CACHE_KEY must be set")
+    if args.ensemble_checkpoint:
+        if args.checkpoint or args.checkpoint_sha256:
+            parser.error("use either one checkpoint or ensemble checkpoints, not both")
+        if len(args.ensemble_checkpoint) != 3:
+            parser.error("exactly three --ensemble-checkpoint values are required")
+    elif not args.checkpoint or not args.checkpoint_sha256:
+        parser.error("--checkpoint and --checkpoint-sha256 are required")
 
     trajectories = load_independent_corpus(
         args.corpus, split=args.split, evaluation_purpose="security-efficacy"
@@ -93,13 +132,38 @@ def main() -> None:
     if not args.policy_bin.is_file():
         raise RuntimeError(f"Gate 3 policy binary not found: {args.policy_bin}")
 
-    engine = AsmCmEngine(
-        args.checkpoint,
-        args.asm_source_root,
-        device=args.device,
-        expected_sha256=args.checkpoint_sha256,
-        inference_policy="security-relevant",
-    )
+    if args.ensemble_checkpoint:
+        members = []
+        member_ids = set()
+        for spec in args.ensemble_checkpoint:
+            member_id, checkpoint, fingerprint = parse_ensemble_checkpoint(spec)
+            if member_id in member_ids:
+                parser.error(f"duplicate ensemble member: {member_id}")
+            member_ids.add(member_id)
+            member = AsmCmEngine(
+                checkpoint,
+                args.asm_source_root,
+                device=args.device,
+                expected_sha256=fingerprint,
+                inference_policy="security-relevant",
+            )
+            member.name = f"D:asm-cm:{member_id}"
+            members.append(member)
+        engine: Any = DecisionEnsemble(
+            members,
+            policy=EnsemblePolicy(
+                deny_votes_required=2,
+                disagreement_action=args.ensemble_disagreement_action,
+            ),
+        )
+    else:
+        engine = AsmCmEngine(
+            args.checkpoint,
+            args.asm_source_root,
+            device=args.device,
+            expected_sha256=args.checkpoint_sha256,
+            inference_policy="security-relevant",
+        )
     args.audit.parent.mkdir(parents=True, exist_ok=True)
     args.cache.parent.mkdir(parents=True, exist_ok=True)
     args.audit.unlink(missing_ok=True)
@@ -134,7 +198,11 @@ def main() -> None:
             started = time.perf_counter_ns()
             asm_started = time.perf_counter_ns()
             asm_result = engine.update(event)
-            engine.synchronize()
+            if isinstance(engine, DecisionEnsemble):
+                for member in engine.engines:
+                    member.synchronize()
+            else:
+                engine.synchronize()
             asm_finished = time.perf_counter_ns()
             state = asm_decision_to_state(event, asm_result)
             gate3_started = time.perf_counter_ns()
@@ -184,8 +252,14 @@ def main() -> None:
             f"durable audit is incomplete: expected={len(events)} actual={audit_records}"
         )
 
+    ensemble_enabled = isinstance(engine, DecisionEnsemble)
+    ensemble_telemetry = engine.telemetry if ensemble_enabled else None
     report = {
-        "benchmark": "unix-agb-gate3-asm-cm-pipeline-v1",
+        "benchmark": (
+            "unix-agb-gate3-asm-cm-ensemble-pipeline-v1"
+            if ensemble_enabled
+            else "unix-agb-gate3-asm-cm-pipeline-v1"
+        ),
         "pipeline": [
             "bpf-telemetry",
             "asm-cm",
@@ -200,11 +274,20 @@ def main() -> None:
         "trajectory_count": len(trajectories),
         "event_count": len(events),
         "asm_cm": {
-            "checkpoint_sha256": engine.checkpoint_sha256,
+            "checkpoint_sha256": getattr(engine, "checkpoint_sha256", None),
+            "checkpoint_sha256s": [
+                member.checkpoint_sha256 for member in engine.engines
+            ] if ensemble_enabled else None,
             "source_revision": args.asm_source_revision,
             "device": args.device,
-            "inference_policy": engine.inference_policy,
-            "inference_count": inference_count,
+            "inference_policy": "security-relevant",
+            "inference_event_count": inference_count,
+            "inference_count": (
+                ensemble_telemetry["total_member_inferences"]
+                if ensemble_telemetry
+                else inference_count
+            ),
+            "ensemble_telemetry": ensemble_telemetry,
         },
         "policy": {
             "revision": args.policy_revision,
@@ -232,7 +315,9 @@ def main() -> None:
             "cache": str(args.cache.resolve()),
         },
         "limitations": (
-            "Controlled BPF laboratory corpus and one promoted checkpoint; dry-run only. "
+            "Controlled BPF laboratory corpus and "
+            + ("three promoted checkpoints" if ensemble_enabled else "one promoted checkpoint")
+            + "; dry-run only. "
             "No enforcement backend was called."
         ),
     }
