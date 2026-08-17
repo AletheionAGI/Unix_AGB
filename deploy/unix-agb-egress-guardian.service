@@ -1,5 +1,5 @@
 [Unit]
-Description=Unix-AGB experimental egress guardian
+Description=Unix-AGB Gate 4 lifecycle guardian laboratory
 Documentation=https://github.com/AletheionAGI/Unix_AGB
 ConditionPathExists=/etc/unix-agb/egress-guardian.enabled
 After=local-fs.target

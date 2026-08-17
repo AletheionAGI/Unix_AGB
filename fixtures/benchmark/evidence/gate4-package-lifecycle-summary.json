@@ -1,0 +1,60 @@
+{
+  "proof": "unix-agb-gate4-package-lifecycle-v1",
+  "date": "2026-08-17",
+  "environment": {
+    "hypervisor": "Multipass 1.16.3 qemu",
+    "instance": "unix-agb-gate4-2604",
+    "release": "Ubuntu 26.04 LTS",
+    "image_hash_prefix": "9dc7c5363c01",
+    "kernel": "7.0.0-28-generic",
+    "systemd": "259.5-0ubuntu3",
+    "clean_snapshot": "clean-base"
+  },
+  "package": {
+    "name": "unix-agb-egress-guardian-lab",
+    "version": "0.1.0",
+    "architecture": "all",
+    "sha256": "b63e9950ac3f1c6053f34f2444efaa2f70197066e93c909c56b505d51fed2f0a",
+    "enabled_by_default": false,
+    "enforcement_active": false
+  },
+  "installation": {
+    "dedicated_uid": 104,
+    "dedicated_gid": 109,
+    "initial_unit_enabled": false,
+    "initial_unit_active": false,
+    "activation_required_marker": true,
+    "systemd_verify_passed": true
+  },
+  "recovery": {
+    "boot_id_before": "b86494b1-8e56-440b-827f-835be6c52233",
+    "boot_id_after": "f58a7a85-f90e-4d69-bb89-4e10a18405ab",
+    "graceful_multipass_restart_completed": false,
+    "graceful_restart_failure": "Multipass remained in Restarting after guest RESET and SSH recovery; multipassd then required SIGKILL",
+    "cold_boot_recovery_completed": true,
+    "unit_enabled_after_cold_boot": true,
+    "unit_active_after_cold_boot": true,
+    "health_socket_responded": true,
+    "policy_revision": "policy:gate4-egress-guardian-v1",
+    "enforcement_active": false
+  },
+  "cleanup": {
+    "package_absent": true,
+    "unit_absent": true,
+    "accounts_absent": true,
+    "processes_absent": true,
+    "listeners_absent": true,
+    "cgroups_absent": true,
+    "paths_absent": true
+  },
+  "criteria": {
+    "disabled_by_default": true,
+    "explicit_activation_only": true,
+    "cold_boot_recovery": true,
+    "graceful_reboot_recovery": false,
+    "complete_purge": true,
+    "persistent_enforcement_validated": false
+  },
+  "supported": false,
+  "verdict": "Lifecycle packaging and cold-boot recovery passed; graceful Multipass reboot did not complete, and persistent enforcement was not tested."
+}

@@ -72,6 +72,9 @@ remains authoritative in `ROADMAP.md`.
 - report 101: real cgroup v2 validation under two user-systemd transient units,
   including the seccomp recovery proof, direct `cgroup.kill`, external-process
   isolation, and complete transient-unit collection.
+- report 102: disabled-by-default Debian lifecycle in a disposable Ubuntu 26.04
+  VM, successful cold-boot recovery and residue-free purge, with the graceful
+  Multipass reboot failure preserved as a negative result.
 
 ## Administrative boundary
 

@@ -274,18 +274,25 @@ The next reversible sequence added a 50 ms pre-lease recovery deadline,
 process-group teardown that preserved an unrelated control process, a two-per-
 60-second restart budget, Unix `SO_PEERCRED` plus nonce/expiry/revision/HMAC
 handoff validation, and an external launcher response to guardian death. The
-repository also contains a disabled-by-default systemd packaging scaffold;
-nothing was installed or enabled. Process groups still substitute for delegated
-cgroups, and the packaged runtime is intentionally not promoted. See reports
-98–100.
+repository also introduced a disabled-by-default systemd packaging scaffold.
+Process groups still substitute for delegated cgroups, and the enforcement
+runtime is intentionally not promoted. See reports 98–100.
 
 The cgroup follow-up ran the in-flight seccomp proof and a guardian-failure
 workload inside separate user-systemd transient services. All protected members
 matched the exact cgroup v2 ControlGroup, direct `cgroup.kill` executed after
 50.221 ms, an unrelated process survived, and both units were collected to
 `LoadState=not-found`. This validates a delegated user cgroup boundary, not a
-privileged persistent service. Disposable-VM installation, reboot recovery,
-and uninstall residue checks remain outstanding. See report 101.
+privileged persistent enforcement service. See report 101.
+
+The packaging follow-up installed a lifecycle-only Debian package in a
+disposable Ubuntu 26.04 VM. It remained inactive by default, recovered its
+revision-bound local health service after a cold boot, and left no package,
+unit, account, process, listener, cgroup, or file residue after purge. The
+graceful Multipass reboot result remained negative because Multipass 1.16.3
+stalled after the guest reset and required daemon recovery. The runtime reports
+`enforcement_active: false`, so persistent enforcement and graceful reboot
+recovery remain outstanding. See report 102.
 
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;

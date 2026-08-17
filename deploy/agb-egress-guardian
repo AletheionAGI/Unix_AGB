@@ -1,0 +1,110 @@
+#!/usr/bin/python3
+"""Boot-persistent lifecycle guardian for the Gate 4 packaging laboratory.
+
+This daemon exposes only a local health socket.  It intentionally does not
+install seccomp filters or claim persistent enforcement readiness.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import socket
+import sys
+import time
+from pathlib import Path
+
+
+EXPECTED_POLICY_REVISION = "policy:gate4-egress-guardian-v1"
+
+
+def atomic_json(path: Path, value: dict[str, object]) -> None:
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+
+
+def load_config(path: Path) -> dict[str, object]:
+    config = json.loads(path.read_text())
+    if config.get("enabled") is not True:
+        raise ValueError("configuration is not enabled")
+    if config.get("mode") != "laboratory-lifecycle-only":
+        raise ValueError("mode must be laboratory-lifecycle-only")
+    if config.get("policy_revision") != EXPECTED_POLICY_REVISION:
+        raise ValueError("policy revision mismatch")
+    if config.get("protected_cgroup") is not None:
+        raise ValueError("lifecycle package must not claim a protected cgroup")
+    return config
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--socket", type=Path, default=Path("/run/unix-agb/guardian.sock"))
+    parser.add_argument("--state", type=Path, default=Path("/var/lib/unix-agb/egress-guardian-state.json"))
+    args = parser.parse_args()
+
+    try:
+        config = load_config(args.config)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"unix-agb-egress-guardian: refusing startup: {error}", file=sys.stderr)
+        return 78
+
+    stopping = False
+
+    def stop(_signum: int, _frame: object) -> None:
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    args.socket.parent.mkdir(parents=True, exist_ok=True)
+    args.state.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        args.socket.unlink()
+    except FileNotFoundError:
+        pass
+
+    started_ns = time.time_ns()
+    state = {
+        "schema_version": 1,
+        "status": "ready",
+        "pid": os.getpid(),
+        "uid": os.getuid(),
+        "gid": os.getgid(),
+        "started_ns": started_ns,
+        "policy_revision": config["policy_revision"],
+        "mode": config["mode"],
+        "enforcement_active": False,
+    }
+    atomic_json(args.state, state)
+
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(args.socket))
+    os.chmod(args.socket, 0o660)
+    listener.listen(8)
+    listener.settimeout(0.25)
+    try:
+        while not stopping:
+            try:
+                connection, _ = listener.accept()
+            except TimeoutError:
+                continue
+            with connection:
+                request = connection.recv(128).strip()
+                response = state if request == b"health" else {"status": "bad-request"}
+                connection.sendall(json.dumps(response, sort_keys=True).encode() + b"\n")
+    finally:
+        listener.close()
+        try:
+            args.socket.unlink()
+        except FileNotFoundError:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
