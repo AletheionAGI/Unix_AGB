@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "mode": "laboratory-only",
+  "policy_revision": "policy:gate4-egress-guardian-v1",
+  "recovery_deadline_ms": 50,
+  "restart_budget": {
+    "maximum": 2,
+    "window_seconds": 60
+  },
+  "protected_cgroup": null
+}

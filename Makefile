@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server audit-reviews-conservatively export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble capture-gate3-natural-validation prepare-gate3-natural-review review-gate3-natural-validation audit-gate3-natural-reviews export-gate3-natural-validation gate3-novel-controlled-lab freeze-gate3-validation evaluate-gate3-validation plot-gate3-validation dry-run-egress-policy gate4-egress-seccomp-pilot benchmark-gate4-egress-broker plot-gate4-egress-broker gate4-listener-guardian gate4-inflight-recovery gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server audit-reviews-conservatively export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble capture-gate3-natural-validation prepare-gate3-natural-review review-gate3-natural-validation audit-gate3-natural-reviews export-gate3-natural-validation gate3-novel-controlled-lab freeze-gate3-validation evaluate-gate3-validation plot-gate3-validation dry-run-egress-policy gate4-egress-seccomp-pilot benchmark-gate4-egress-broker plot-gate4-egress-broker gate4-listener-guardian gate4-inflight-recovery gate4-prelease-teardown gate4-control-plane-resilience gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -383,6 +383,15 @@ gate4-inflight-recovery:
 		--threads "$${AGB_GATE4_INFLIGHT_THREADS:-8}" \
 		--crash-after-received "$${AGB_GATE4_INFLIGHT_CRASH_AFTER:-8}" \
 		--output "$${AGB_GATE4_INFLIGHT_OUTPUT:-var/benchmark/gate4-inflight-recovery.json}"
+
+gate4-prelease-teardown:
+	PYTHONPATH=python:scripts python3 scripts/run_gate4_prelease_teardown.py \
+		--recovery-deadline-ms "$${AGB_GATE4_RECOVERY_DEADLINE_MS:-50}" \
+		--output "$${AGB_GATE4_PRELEASE_OUTPUT:-var/benchmark/gate4-prelease-teardown.json}"
+
+gate4-control-plane-resilience:
+	PYTHONPATH=python:scripts python3 scripts/run_gate4_control_plane_resilience.py \
+		--output "$${AGB_GATE4_CONTROL_PLANE_OUTPUT:-var/benchmark/gate4-control-plane-resilience.json}"
 
 gate4-reversible-denial:
 	cargo build --quiet --bin agb-lab-workload --bin agb-policy-dry-run

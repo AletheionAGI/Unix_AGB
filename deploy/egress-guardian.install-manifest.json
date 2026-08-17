@@ -1,0 +1,18 @@
+{
+  "component": "unix-agb-egress-guardian",
+  "status": "laboratory-packaging-scaffold",
+  "enabled_by_default": false,
+  "installed_by_this_repository": false,
+  "files": [
+    {
+      "source": "deploy/unix-agb-egress-guardian.service",
+      "destination": "/usr/lib/systemd/system/unix-agb-egress-guardian.service"
+    },
+    {
+      "source": "deploy/egress-guardian.json.example",
+      "destination": "/usr/share/doc/unix-agb/egress-guardian.json.example"
+    }
+  ],
+  "activation_marker": "/etc/unix-agb/egress-guardian.enabled",
+  "required_runtime_not_yet_promoted": "/usr/libexec/unix-agb/agb-egress-guardian"
+}

@@ -48,6 +48,7 @@ def broker_main(channel: socket.socket) -> None:
     generation = int(config["generation"])
     crash_after = config.get("crash_after")
     crash_before_send_after_received = config.get("crash_before_send_after_received")
+    crash_before_lease_after_received = config.get("crash_before_lease_after_received")
     lease_reporting = bool(config.get("lease_reporting", False))
     processed = 0
     received = 0
@@ -79,6 +80,8 @@ def broker_main(channel: socket.socket) -> None:
         except (OSError, ValueError):
             target = True
             effect = enforcement_effect("ABSTAIN", target_pid=True, adapter_failed=True)
+        if crash_before_lease_after_received is not None and received >= int(crash_before_lease_after_received):
+            os._exit(72)
         if lease_reporting:
             channel.send(json.dumps({"type": "lease", "generation": generation, "notification_id": notification_id, "notified_tid": notified_tid}).encode())
         if crash_before_send_after_received is not None and received >= int(crash_before_send_after_received):
@@ -112,6 +115,7 @@ def start_broker(
     *,
     crash_before_send_after_received: int | None = None,
     lease_reporting: bool = False,
+    crash_before_lease_after_received: int | None = None,
 ) -> tuple[int, socket.socket]:
     guardian, broker = socket.socketpair(type=socket.SOCK_SEQPACKET)
     pid = os.fork()
@@ -123,7 +127,7 @@ def start_broker(
         finally:
             os._exit(125)
     broker.close()
-    guardian.send(json.dumps({"target_pid": target_pid, "executable": str(executable), "generation": generation, "crash_after": crash_after, "crash_before_send_after_received": crash_before_send_after_received, "lease_reporting": lease_reporting}).encode())
+    guardian.send(json.dumps({"target_pid": target_pid, "executable": str(executable), "generation": generation, "crash_after": crash_after, "crash_before_send_after_received": crash_before_send_after_received, "crash_before_lease_after_received": crash_before_lease_after_received, "lease_reporting": lease_reporting}).encode())
     guardian.sendmsg([b"listener"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [listener]))])
     ready = json.loads(guardian.recv(4096))
     if ready.get("type") != "ready" or ready.get("generation") != generation:

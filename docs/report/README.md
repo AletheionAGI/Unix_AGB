@@ -63,6 +63,12 @@ remains authoritative in `ROADMAP.md`.
 - report 97: recovery after broker death between seccomp `RECV` and `SEND`
   through a guardian-visible lease, kernel ID validation, and independent TGID
   verification, while preserving the pre-lease crash interval as a blocker.
+- report 98: formal 50 ms recovery deadline and process-group teardown for an
+  unrecoverable pre-lease crash, with an unrelated process preserved.
+- report 99: real peer credentials, revision/nonce/HMAC handoff validation,
+  bounded restart loops, and launcher-scoped response to guardian death.
+- report 100: disabled-by-default systemd/config/install-manifest packaging
+  scaffold, validated but deliberately neither installed nor started.
 
 ## Administrative boundary
 

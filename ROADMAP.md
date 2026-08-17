@@ -270,6 +270,15 @@ needed. A crash between kernel `RECV` completion and lease publication,
 authenticated/revision-bound handoff, restart-loop bounds, and guardian failure
 with protected-cgroup teardown remain blockers. See report 97.
 
+The next reversible sequence added a 50 ms pre-lease recovery deadline,
+process-group teardown that preserved an unrelated control process, a two-per-
+60-second restart budget, Unix `SO_PEERCRED` plus nonce/expiry/revision/HMAC
+handoff validation, and an external launcher response to guardian death. The
+repository also contains a disabled-by-default systemd packaging scaffold;
+nothing was installed or enabled. Process groups still substitute for delegated
+cgroups, and the packaged runtime is intentionally not promoted. See reports
+98–100.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;
