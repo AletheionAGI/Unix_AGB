@@ -98,8 +98,22 @@ agent/tool composition, a completely hidden family, causal distances from 4 to
 Baselines are fingerprinted before ASM-CM training, and test labels remain
 unevaluated until three candidate checkpoints are frozen. A consistent
 five-percentage-point advantage at long distance and on the hidden family is
-required; a tie or loss is an explicit refutation. See
-`docs/gate2b-causal-generalization.md`.
+required; a tie or loss is an explicit refutation. The completed v1 run did not
+support the hypothesis: all ASM-CM seeds remained close to chance while bounded
+FSM/CEP reached 80%. That result remains frozen. A separate v2 diagnostic gates
+the distance ladder on balanced 2/8/32-example capacity checks and never accepts
+the sealed test corpus; see `docs/gate2b-causal-generalization.md` and
+`docs/gate2b-v2-diagnostic.md`.
+The v2/v3 diagnostics localized the failure to global-ID representation:
+trajectory-local canonical IDs reached 100% on new and permuted entities while
+raw IDs remained near chance. V4 confirmed 99.375–100% canonical accuracy and
+100% at distances 256/1024 across three seeds, but correctly retained a negative
+formal verdict because seed 3 FPR was 1.25% against a 1% limit. V5 froze those
+models and predeclared a 2-of-3 ensemble on a new test; it passed all seven
+criteria with 100% accuracy/recall/precision and zero FP/FN, while recording
+0.625% seed disagreement per split. These results remain synthetic-family
+evidence, not natural unknown-attack validation. See `docs/gate2b-v3-binding.md`,
+`docs/gate2b-v4-canonical-confirmation.md`, and `docs/gate2b-v5-ensemble.md`.
 
 The repository now contains a deterministic `StateEngine` seam, a Python
 stateful proxy, and a real promoted-checkpoint ASM-CM adapter behind the

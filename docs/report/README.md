@@ -30,6 +30,13 @@ remains authoritative in `ROADMAP.md`.
   and one temporary process-local denial with teardown/restart rollback.
 - report 83: preregistered neutral Gate 2B protocol, physically sealed holdout,
   frozen baselines, and an operator-side three-seed ASM-CM training runner.
+- report 84: preserved negative Gate 2B v1 result and a separately scoped v2
+  capacity/generalization diagnostic with no sealed-test access.
+- report 85: identity-binding diagnostic comparing raw, canonical,
+  permutation-augmented, auxiliary-matching, and explicit-equality inputs.
+- report 86: fresh Gate 2B v4 raw-versus-canonical, three-seed confirmation
+  scaffold with original baselines and criteria.
+- report 87: frozen v4 canonical 2-of-3 ensemble confirmation on a new test.
 
 ## Administrative boundary
 
@@ -52,8 +59,12 @@ remains authoritative in `ROADMAP.md`.
   enforcement policy. Gate 3 now has a real-ASM-CM deny-only dry-run pipeline;
   Gate 4 now has one controlled process-local denial proof, not a production
   enforcement backend.
-- Gate 2B is a preregistered but not yet executed scientific challenge. Its
-  outcome may support or refute the need for ASM-CM relative to simpler methods.
+- Gate 2B v1 was executed and did not support the preregistered hypothesis:
+  ASM-CM remained close to chance while bounded FSM/CEP reached 80%. V2/v3
+  identified global-ID binding as the failure; v4 confirmed canonical long-range
+  accuracy but narrowly failed its per-seed FPR criterion; v5's frozen 2-of-3
+  ensemble passed all criteria on a new synthetic test. Natural unknown-attack
+  validation remains outstanding.
 
 New work should update this index when it changes the current interpretation;
 small chronological reports may still be retained for reproducibility.

@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -95,6 +95,64 @@ evaluate-gate2b-final:
 		--device "$${ASM_DEVICE:-cuda}" \
 		--chart-prefix "$${AGB_GATE2B_CHART_PREFIX:-var/benchmark/gate2b-comparison}" \
 		--output "$${AGB_GATE2B_FINAL_OUTPUT:-var/benchmark/gate2b-final.json}"
+
+diagnose-gate2b-v2:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/diagnose_gate2b_asm.py \
+		--corpus "$${AGB_GATE2B_CORPUS:-var/benchmark/gate2b-neutral.jsonl}" \
+		--checkpoint "$${ASM_CM_CHECKPOINT:?set ASM_CM_CHECKPOINT}" \
+		--checkpoint-sha256 "$${ASM_CM_CHECKPOINT_SHA256:?set ASM_CM_CHECKPOINT_SHA256}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--seed "$${AGB_GATE2B_DIAGNOSTIC_SEED:-1}" \
+		--lr "$${AGB_GATE2B_DIAGNOSTIC_LR:-1e-4}" \
+		--batch-pairs "$${AGB_GATE2B_DIAGNOSTIC_BATCH_PAIRS:-1}" \
+		--max-steps "$${AGB_GATE2B_DIAGNOSTIC_STEPS:-600}" \
+		--report-every "$${AGB_GATE2B_DIAGNOSTIC_REPORT_EVERY:-50}" \
+		--pass-threshold "$${AGB_GATE2B_DIAGNOSTIC_PASS_THRESHOLD:-0.99}" \
+		--output "$${AGB_GATE2B_DIAGNOSTIC_OUTPUT:-var/benchmark/gate2b-v2-diagnostic.json}"
+
+diagnose-gate2b-v2-relational:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/diagnose_gate2b_asm.py \
+		--corpus "$${AGB_GATE2B_CORPUS:-var/benchmark/gate2b-neutral.jsonl}" \
+		--checkpoint "$${ASM_CM_CHECKPOINT:?set ASM_CM_CHECKPOINT}" \
+		--checkpoint-sha256 "$${ASM_CM_CHECKPOINT_SHA256:?set ASM_CM_CHECKPOINT_SHA256}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--seed "$${AGB_GATE2B_DIAGNOSTIC_SEED:-1}" \
+		--lr "$${AGB_GATE2B_DIAGNOSTIC_LR:-1e-4}" \
+		--batch-pairs "$${AGB_GATE2B_DIAGNOSTIC_BATCH_PAIRS:-1}" \
+		--max-steps "$${AGB_GATE2B_DIAGNOSTIC_STEPS:-600}" \
+		--report-every "$${AGB_GATE2B_DIAGNOSTIC_REPORT_EVERY:-50}" \
+		--pass-threshold "$${AGB_GATE2B_DIAGNOSTIC_PASS_THRESHOLD:-0.99}" \
+		--prior-report "$${AGB_GATE2B_PRIOR_DIAGNOSTIC:-var/benchmark/gate2b-v2-diagnostic.json}" \
+		--output "$${AGB_GATE2B_RELATIONAL_OUTPUT:-var/benchmark/gate2b-v2-relational.json}"
+
+diagnose-gate2b-v3-binding:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/diagnose_gate2b_binding.py \
+		--checkpoint "$${ASM_CM_CHECKPOINT:?set ASM_CM_CHECKPOINT}" \
+		--checkpoint-sha256 "$${ASM_CM_CHECKPOINT_SHA256:?set ASM_CM_CHECKPOINT_SHA256}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--seed "$${AGB_GATE2B_BINDING_SEED:-1}" \
+		--steps "$${AGB_GATE2B_BINDING_STEPS:-400}" \
+		--lr "$${AGB_GATE2B_BINDING_LR:-1e-4}" \
+		--auxiliary-weight "$${AGB_GATE2B_BINDING_AUX_WEIGHT:-0.2}" \
+		--output "$${AGB_GATE2B_BINDING_OUTPUT:-var/benchmark/gate2b-v3-binding.json}"
+
+train-gate2b-v4:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/train_gate2b_v4.py \
+		--corpus "$${AGB_GATE2B_CORPUS:?set AGB_GATE2B_CORPUS}" \
+		--baseline-report "$${AGB_GATE2B_BASELINES:?set AGB_GATE2B_BASELINES}" \
+		--checkpoint "$${ASM_CM_CHECKPOINT:?set ASM_CM_CHECKPOINT}" \
+		--checkpoint-sha256 "$${ASM_CM_CHECKPOINT_SHA256:?set ASM_CM_CHECKPOINT_SHA256}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:?set ASM_SOURCE_ROOT}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:?set ASM_SOURCE_REVISION}" \
+		--representation "$${AGB_GATE2B_V4_REPRESENTATION:?set AGB_GATE2B_V4_REPRESENTATION}" \
+		--seed "$${AGB_GATE2B_TRAIN_SEED:?set AGB_GATE2B_TRAIN_SEED}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--curriculum "$${AGB_GATE2B_V4_CURRICULUM:-4:300,16:300,64:400,256:500,1024:500}" \
+		--lr "$${AGB_GATE2B_V4_LR:-1e-4}" \
+		--output-root "$${AGB_GATE2B_V4_RUN:?set AGB_GATE2B_V4_RUN}"
 
 capture-independent-events:
 	PYTHONPATH=python:scripts python3 scripts/run_live_bpf_observer.py \

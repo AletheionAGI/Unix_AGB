@@ -19,7 +19,10 @@ def plot_report(report: dict, output_prefix: Path) -> list[str]:
     splits = ("test-composition", "test-hidden-family")
     titles = ("Composição inédita", "Família completamente oculta")
     distances = [4, 16, 64, 256, 1024]
-    figure, axes = plt.subplots(1, 2, figsize=(13, 5.4), sharey=True)
+    # Reserve a dedicated footer for the explanatory note and the two-row
+    # legend. Keeping both outside the axes prevents them from obscuring each
+    # other or the distance curves in headless PNG/SVG rendering.
+    figure, axes = plt.subplots(1, 2, figsize=(13, 6.4), sharey=True)
     colors = ["#64748b", "#0f766e", "#b45309", "#7c3aed", "#be123c"]
 
     for axis, split, title in zip(axes, splits, titles):
@@ -45,10 +48,23 @@ def plot_report(report: dict, output_prefix: Path) -> list[str]:
         axis.set_xlabel("Distância causal (eventos)")
     axes[0].set_ylabel("Accuracy (%)")
     handles, labels = axes[1].get_legend_handles_labels()
-    figure.legend(handles, labels, loc="lower center", ncol=4, frameon=False)
+    figure.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.025),
+        ncol=4,
+        frameon=False,
+    )
     figure.suptitle("Unix-AGB Gate 2B — generalização causal neutra", fontsize=14, fontweight="bold")
-    figure.text(0.5, 0.055, "Área azul: mínimo–máximo entre três seeds ASM-CM. Maior é melhor.", ha="center", fontsize=9)
-    figure.tight_layout(rect=(0, 0.13, 1, 0.93))
+    figure.text(
+        0.5,
+        0.175,
+        "Área azul: mínimo–máximo entre três seeds ASM-CM. Maior é melhor.",
+        ha="center",
+        fontsize=9,
+    )
+    figure.tight_layout(rect=(0, 0.23, 1, 0.93))
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
     png = output_prefix.with_suffix(".png")
     svg = output_prefix.with_suffix(".svg")
