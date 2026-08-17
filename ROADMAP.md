@@ -313,6 +313,15 @@ production/system-wide enforcement remain outstanding. Ubuntu 26.04 also
 retained an unrelated `grub2-common`/virtual-fd0 degraded-boot result. See
 reports 104–105.
 
+Gate 4 is not promoted. A stricter promotion protocol now requires eight
+independent evidence domains: real Gate 3 decision binding, real application
+coverage, concurrency/endurance, authenticated policy lifecycle, failure and
+update behavior, namespace/application isolation, production resource and
+latency budgets, and the Ubuntu boot/package matrix. Its evaluator fails
+closed on missing or unauthenticated evidence and retains
+`gate4_status: controlled-prototype` until every domain passes under one frozen
+revision and artifact. See report 106.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;
