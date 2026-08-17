@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server audit-reviews-conservatively export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble capture-gate3-natural-validation prepare-gate3-natural-review review-gate3-natural-validation audit-gate3-natural-reviews export-gate3-natural-validation gate3-novel-controlled-lab freeze-gate3-validation evaluate-gate3-validation plot-gate3-validation dry-run-egress-policy gate4-egress-seccomp-pilot benchmark-gate4-egress-broker plot-gate4-egress-broker gate4-listener-guardian gate4-inflight-recovery gate4-prelease-teardown gate4-control-plane-resilience gate4-transient-cgroup gate4-package gate4-reversible-denial evaluate-gate4-promotion gate4-campaign gate4-campaign-gui gate4-campaign-verify causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server audit-reviews-conservatively export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble capture-gate3-natural-validation prepare-gate3-natural-review review-gate3-natural-validation audit-gate3-natural-reviews export-gate3-natural-validation gate3-novel-controlled-lab freeze-gate3-validation evaluate-gate3-validation plot-gate3-validation dry-run-egress-policy gate4-egress-seccomp-pilot benchmark-gate4-egress-broker plot-gate4-egress-broker gate4-listener-guardian gate4-inflight-recovery gate4-prelease-teardown gate4-control-plane-resilience gate4-transient-cgroup gate4-package gate4-reversible-denial evaluate-gate4-promotion gate4-campaign gate4-campaign-gui gate4-campaign-verify gate4-formal-vm-prepare gate4-formal-freeze gate4-formal gate4-formal-gui gate4-formal-gui-view gate4-formal-verify gate4-formal-evaluate causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -435,6 +435,47 @@ gate4-campaign-verify:
 	python3 scripts/verify_gate4_automated_campaign.py \
 		--manifest "$${AGB_GATE4_CAMPAIGN_MANIFEST:-fixtures/benchmark/gate4-campaign-smoke-manifest.json}" \
 		--output-dir "$${AGB_GATE4_CAMPAIGN_OUTPUT:-var/benchmark/gate4-campaign}"
+
+gate4-formal-vm-prepare:
+	sudo python3 scripts/prepare_gate4_formal_vm.py --apply
+
+gate4-formal-freeze:
+	python3 scripts/build_gate4_formal_manifest.py \
+		--profile fixtures/benchmark/gate4-campaign-formal-profile.json \
+		--output "$${AGB_GATE4_FORMAL_MANIFEST:-var/benchmark/gate4-campaign-formal-manifest.json}"
+
+gate4-formal:
+	python3 scripts/run_gate4_automated_campaign.py \
+		--manifest "$${AGB_GATE4_FORMAL_MANIFEST:-var/benchmark/gate4-campaign-formal-manifest.json}" \
+		--mode formal --duration-seconds 28800 --interval-seconds 5 \
+		--output-dir "$${AGB_GATE4_FORMAL_OUTPUT:-var/benchmark/gate4-campaign-formal}"
+
+gate4-formal-gui:
+	python3 scripts/run_gate4_automated_campaign.py \
+		--manifest "$${AGB_GATE4_FORMAL_MANIFEST:-var/benchmark/gate4-campaign-formal-manifest.json}" \
+		--mode formal --duration-seconds 28800 --interval-seconds 5 \
+		--output-dir "$${AGB_GATE4_FORMAL_OUTPUT:-var/benchmark/gate4-campaign-formal}" \
+		--gui --gui-port "$${AGB_GATE4_CAMPAIGN_GUI_PORT:-8765}"
+
+gate4-formal-gui-view:
+	python3 scripts/serve_gate4_campaign_gui.py \
+		--output-dir "$${AGB_GATE4_FORMAL_OUTPUT:-var/benchmark/gate4-campaign-formal}" \
+		--port "$${AGB_GATE4_CAMPAIGN_GUI_PORT:-8765}"
+
+gate4-formal-verify:
+	python3 scripts/verify_gate4_automated_campaign.py \
+		--manifest "$${AGB_GATE4_FORMAL_MANIFEST:-var/benchmark/gate4-campaign-formal-manifest.json}" \
+		--output-dir "$${AGB_GATE4_FORMAL_OUTPUT:-var/benchmark/gate4-campaign-formal}"
+
+gate4-formal-evaluate:
+	python3 scripts/evaluate_gate4_formal_campaign.py \
+		--profile fixtures/benchmark/gate4-campaign-formal-profile.json \
+		--manifest "$${AGB_GATE4_FORMAL_MANIFEST:-var/benchmark/gate4-campaign-formal-manifest.json}" \
+		--output-dir "$${AGB_GATE4_FORMAL_OUTPUT:-var/benchmark/gate4-campaign-formal}" \
+		--vm-evidence "$${AGB_GATE4_VM_EVIDENCE:-var/benchmark/gate4-vm-evidence.json}" \
+		--namespace-evidence "$${AGB_GATE4_NAMESPACE_EVIDENCE:-var/benchmark/gate4-namespace-evidence.json}" \
+		--resource-evidence "$${AGB_GATE4_RESOURCE_EVIDENCE:-var/benchmark/gate4-resource-evidence.json}" \
+		--output "$${AGB_GATE4_FORMAL_EVALUATION:-var/benchmark/gate4-formal-evaluation.json}"
 
 causal-proof:
 	cargo run --quiet --bin agb-causal-proof

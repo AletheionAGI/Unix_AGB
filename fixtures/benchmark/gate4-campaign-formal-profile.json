@@ -1,0 +1,27 @@
+{
+  "protocol": "unix-agb-gate4-formal-profile-v1",
+  "artifact_path": "var/package/unix-agb-egress-guardian-lab_0.3.1_all.deb",
+  "artifact_sha256": "a14a3d342da5ba6b2ca5c49824784d99f6d414afcd3b5dc2b4fc556d784b0c00",
+  "policy_revision": "policy:bpf-observer-v2",
+  "ubuntu_releases": ["24.04", "26.04"],
+  "duration_seconds": 28800,
+  "interval_seconds": 5,
+  "workload_counts": {
+    "python-http": 11,
+    "dbus-daemon": 10,
+    "systemd-inhibit": 11
+  },
+  "systemd_service": "unix-agb-egress-guardian.service",
+  "controls": {
+    "protected_external": "EACCES",
+    "protected_loopback": "allowed",
+    "unprotected_external": "base-policy"
+  },
+  "budgets": {
+    "cpu_ticks_per_process": 1440000,
+    "rss_kib_per_process": 131072,
+    "fd_count_per_process": 128,
+    "audit_bytes": 268435456,
+    "probe_latency_ms": {"p50": 50, "p95": 150, "p99": 500}
+  }
+}

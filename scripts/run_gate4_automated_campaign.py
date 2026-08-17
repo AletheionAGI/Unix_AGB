@@ -145,6 +145,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.duration_seconds < 1 or args.interval_seconds <= 0:
         parser.error("duration and interval must be positive")
+    if not args.manifest.is_file():
+        parser.error(f"manifest does not exist: {args.manifest}; freeze it before starting the campaign")
     manifest_bytes = args.manifest.read_bytes()
     manifest = json.loads(manifest_bytes)
     try: validate_manifest(manifest, args.mode, args.duration_seconds)

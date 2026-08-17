@@ -377,6 +377,17 @@ zero residue. Authenticated promotion evidence verified successfully, so
 `gate3_decision_integration` is now the first supported domain of eight. Gate 4
 as a whole remains `controlled-prototype`. See reports 113–114.
 
+A coordinated formal-campaign profile and fail-closed evaluator now prepare
+five remaining domains without merging their verdicts. The host-bound freeze
+requires package 0.3.1, `policy:bpf-observer-v2`, an active guardian service,
+Ubuntu 24.04 or 26.04, three real application classes, 32 concurrent groups,
+eight monotonic hours, explicit controls and preregistered resource/latency
+budgets. The runner supports the same read-only localhost GUI. Auxiliary VM,
+namespace, control and audit records must match the exact profile, manifest,
+artifact and policy digests; missing evidence remains negative. Local
+orchestration qualification passed, but no eligible eight-hour VM campaign has
+run and no additional domain is promoted. See reports 115–116.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;
