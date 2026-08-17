@@ -29,6 +29,37 @@ Before setup, the runner reads the declared package path and requires its
 computed SHA-256 to equal the frozen artifact digest. A missing or changed
 package prevents campaign startup.
 
+An optional `--gui` mode serves a read-only dashboard exclusively on
+`127.0.0.1`. It reads the same atomically written live-status document and does
+not mutate workloads, probes, evidence or timing. The headless and GUI modes
+therefore share one execution path and one scientific result format.
+
+### Planned process explanation panel
+
+A later GUI increment may make each supervised-process row selectable and ask
+a local Ollama model (initial candidate: `qwen3.5:0.8b`) to explain the selected
+evidence package in operator language. The panel should answer four bounded
+questions: what the executable normally is, what the observed operations mean,
+where the process identity originated, and which recorded destinations it
+attempted to reach.
+
+This is an explanation surface, not a classifier or an enforcement input. The
+model runs outside the syscall and policy hot paths and receives only an
+authorized, size-bounded evidence projection. Every process, parent, path,
+address, port and provenance statement must cite the corresponding canonical
+field or evidence identifier. Missing information is rendered as `unknown`;
+the model must not infer intent, malware status, ownership, origin or network
+destination from an executable name or an ambiguous event. Its response is
+visibly marked as model-generated, records model name/digest and prompt-schema
+revision, and cannot modify labels, cache entries, policy state, campaign
+artifacts or promotion verdicts.
+
+Ollama is optional and disabled by default. If it is unavailable, times out or
+returns an invalid response, the GUI continues to show the deterministic raw
+evidence and a bounded explanation-unavailable status. Local-only operation is
+the default; no evidence is sent to a remote model endpoint without a separate,
+explicitly authorized data-use policy.
+
 Smoke mode exists only to validate orchestration and cannot become promotion
 evidence.
 

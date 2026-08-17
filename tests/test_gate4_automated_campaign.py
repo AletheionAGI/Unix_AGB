@@ -2,11 +2,13 @@ import hashlib
 import json
 import subprocess
 import tempfile
+import urllib.request
 import unittest
 from pathlib import Path
 
 from run_gate4_automated_campaign import TARGET_DOMAINS, validate_manifest
 from verify_gate4_automated_campaign import verify
+from gate4_campaign_gui import CampaignGui
 
 
 class Gate4AutomatedCampaignTests(unittest.TestCase):
@@ -49,6 +51,23 @@ class Gate4AutomatedCampaignTests(unittest.TestCase):
             self.assertTrue(summary["complete"])
             self.assertFalse(summary["promotion_eligible"])
             self.assertTrue(verify(manifest, output)["valid"])
+
+    def test_gui_is_local_read_only_and_serves_product_brand(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "live-status.json").write_text('{"running":true,"failures":[]}')
+            gui = CampaignGui(root, 0)
+            gui.start()
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{gui.port}/", timeout=2) as response:
+                    page = response.read().decode()
+                    self.assertIn("Aletheion Guard Bridge", page)
+                    self.assertIn("--cyan:#079ab6", page)
+                    self.assertEqual(response.headers["Cache-Control"], "no-store")
+                with urllib.request.urlopen(f"http://127.0.0.1:{gui.port}/api/status", timeout=2) as response:
+                    self.assertTrue(json.loads(response.read())["running"])
+            finally:
+                gui.stop()
 
 
 if __name__ == "__main__":

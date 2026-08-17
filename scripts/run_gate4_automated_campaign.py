@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from gate4_campaign_gui import CampaignGui
+
 TARGET_DOMAINS = {
     "real_application_coverage", "concurrency_endurance",
     "namespace_application_isolation", "production_resource_latency",
@@ -138,6 +140,8 @@ def main() -> int:
     parser.add_argument("--duration-seconds", type=int, required=True)
     parser.add_argument("--interval-seconds", type=float, default=5.0)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--gui", action="store_true", help="serve a read-only dashboard on localhost")
+    parser.add_argument("--gui-port", type=int, default=8765)
     args = parser.parse_args()
     if args.duration_seconds < 1 or args.interval_seconds <= 0:
         parser.error("duration and interval must be positive")
@@ -154,6 +158,7 @@ def main() -> int:
     heartbeats = args.output_dir / "heartbeats.jsonl"
     failures_path = args.output_dir / "failures.jsonl"
     summary_path = args.output_dir / "summary.json"
+    live_status_path = args.output_dir / "live-status.json"
     heartbeats.unlink(missing_ok=True); failures_path.unlink(missing_ok=True)
     failures: list[dict[str, object]] = []; setup_results = []; teardown_results = []
     workloads: list[tuple[dict[str, Any], subprocess.Popen[bytes]]] = []
@@ -165,6 +170,10 @@ def main() -> int:
         interrupted = True
     signal.signal(signal.SIGINT, stop); signal.signal(signal.SIGTERM, stop)
     started_wall = time.time(); started_mono = time.monotonic()
+    gui = CampaignGui(args.output_dir, args.gui_port) if args.gui else None
+    if gui:
+        gui.start()
+        print(f"Gate 4 dashboard: http://127.0.0.1:{gui.port}", flush=True)
     try:
         for command in manifest["setup"]:
             result = run_command(command, 300); setup_results.append(result)
@@ -199,6 +208,11 @@ def main() -> int:
                     "loadavg": load, "processes": process_rows, "probes": probes, "previous_sha256": chain}
             chain = hashlib.sha256(canonical(body)).hexdigest()
             append_sync(heartbeats, {**body, "sha256": chain}); samples += 1
+            atomic_json(live_status_path, {"running": True, "complete": False, "mode": args.mode,
+                        "elapsed_seconds": time.monotonic() - started_mono,
+                        "requested_seconds": args.duration_seconds, "heartbeat_samples": samples,
+                        "heartbeat_chain_head": chain, "maxima": maxima, "loadavg": load,
+                        "processes": process_rows, "probes": probes, "failures": failures})
             remaining = deadline - time.monotonic()
             if remaining > 0: time.sleep(min(args.interval_seconds, remaining))
     except Exception as error:
@@ -226,7 +240,9 @@ def main() -> int:
                "artifacts": artifacts, "interrupted": interrupted, "complete": complete,
                "promotion_eligible": args.mode == "formal" and complete}
     atomic_json(summary_path, summary)
+    atomic_json(live_status_path, {**summary, "running": False, "processes": [], "probes": []})
     print(json.dumps(summary, sort_keys=True))
+    if gui: gui.stop()
     return 0 if complete else 1
 
 
