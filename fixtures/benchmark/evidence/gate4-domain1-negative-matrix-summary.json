@@ -1,0 +1,37 @@
+{
+  "proof": "unix-agb-gate4-domain1-negative-matrix-v1",
+  "package_sha256": "a14a3d342da5ba6b2ca5c49824784d99f6d414afcd3b5dc2b4fc556d784b0c00",
+  "policy_revision": "policy:bpf-observer-v2",
+  "cases": {
+    "allow_projection": true,
+    "abstain_projection": true,
+    "expired_deny": true,
+    "corrupt_snapshot": true,
+    "wrong_revision": true,
+    "cross_namespace_replay": true,
+    "active_deny_replay_remains_restrictive": true
+  },
+  "compiler_projection": {
+    "effects": ["ALLOW", "ABSTAIN"],
+    "cache_created": false,
+    "input_sha256": "7df83fcee9b72d45d55a6a644440680c45175c3dca9e079849a51ca1a91b8440",
+    "output_sha256": "631177398675b47ed039b379f97bee910438e4d4c64bdab8de08b075190ee870"
+  },
+  "matrix_sha256": "ddce3c5b141ab32b599b37b34cc049183521860e53c53222925b7cdded92d20e",
+  "guardian_audit_sha256": "caefcaa1dd6cbc55677d0c88f04ebf98883786a0780e45c910cddce7289633f8",
+  "cleanup_sha256": "4523222e56dc8673d330b3cb69db755b70fe32b5863fdb4bd9916b75a4c306b2",
+  "unprotected_control_errno": 111,
+  "protected_fail_open": 0,
+  "cross_scope_effects": 0,
+  "purge_left_zero_residue": true,
+  "authenticated_evidence": {
+    "domain": "gate3_decision_integration",
+    "hmac_sha256": "c5a83a7d0f7f217d24a0d446afe81af456d38109f43b0e563025a18b1cbc00f0",
+    "ephemeral_key_sha256": "79f90927cac5861c530a3170db8f432f2a0b867dee660bd00f7210f0116c7d65",
+    "verification_result": "SUPPORTED"
+  },
+  "gate3_decision_integration_supported": true,
+  "promotion_domains_supported": 1,
+  "promotion_domains_required": 8,
+  "gate4_status": "controlled-prototype"
+}

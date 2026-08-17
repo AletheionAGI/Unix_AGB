@@ -366,6 +366,17 @@ the live BPF model-to-kernel chain, but does not yet complete promotion domain
 revision and package digest and produce authenticated promotion evidence. See
 reports 111–112.
 
+The remaining domain-1 negative matrix then ran against the identical package
+0.3.1 digest under `policy:bpf-observer-v2`. Rust compiler projections for
+`ALLOW` and `ABSTAIN` created no cache entry; expired, corrupt, wrong-revision
+and cross-namespace replay inputs did not activate authority; a still-valid
+exact denial replay remained restrictive; and every authenticated empty
+rotation restored base behavior in the same PID. The unprotected control was
+unaffected, protected fail-open and cross-scope counts were zero, and purge left
+zero residue. Authenticated promotion evidence verified successfully, so
+`gate3_decision_integration` is now the first supported domain of eight. Gate 4
+as a whole remains `controlled-prototype`. See reports 113–114.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;
