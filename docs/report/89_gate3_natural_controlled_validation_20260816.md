@@ -34,3 +34,5 @@ The local final report SHA-256 is
 `7c1dfe28df0d139a624c21d58e833b6e517aa0ea25f7484d93043222ff2a7ba8`.
 The path-independent summary is committed at
 `fixtures/benchmark/evidence/gate3-natural-controlled-validation-summary.json`.
+The PNG/SVG chart is reproducible with `make plot-gate3-validation` and keeps
+the natural zero-inference limitation visible in the figure itself.
