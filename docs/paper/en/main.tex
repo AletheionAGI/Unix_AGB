@@ -36,7 +36,12 @@
 
 \title{Persistent Causal State for Operating-System Enforcement\\
 \large Engineering a Stateful, Auditable, and Fail-Closed Linux Policy Runtime}
-\author{Unix-AGB Project}
+
+\author{
+Felipe Maya Muniz\\
+\textit{Unix-AGB Project / AletheionAGI}
+}
+
 \date{August 17, 2026}
 
 \begin{document}
@@ -52,7 +57,9 @@ normalized kernel observations update persistent, namespace-isolated causal
 state; a deterministic policy layer then compiles only restrictive decisions
 into short-lived enforcement records. Exact events remain the historical
 truth, learned state remains replaceable, and Linux retains final enforcement
-authority. This article explains the engineering of that pipeline: contracts,
+authority. The key design constraint is \emph{monotonic authority}: learned or
+stateful inference may only reduce existing privilege; it cannot manufacture
+permission. This article explains the engineering of that pipeline: contracts,
 identity, ordering, persistence, policy revisions, authenticated caches,
 seccomp user-notification handoff, recovery, packaging, and experimental
 validation. It also states the boundary of the result. The current system is a
@@ -60,6 +67,16 @@ controlled prototype with packaged, opt-in, exact-launch egress enforcement;
 it is not a production security service and does not yet establish security
 efficacy on natural unknown attacks.
 \end{abstract}
+
+\noindent\textbf{Keywords:}
+persistent causal state,
+operating-system security,
+stateful enforcement,
+monotonic authority,
+deny-only compilation,
+Linux security,
+seccomp,
+runtime security.
 
 \section{The engineering problem}
 
@@ -103,15 +120,15 @@ This work makes four contributions:
 \begin{enumerate}[leftmargin=*]
   \item an operating-system policy architecture that separates persistent
         causal state from canonical evidence and deterministic enforcement;
-  \item a deny-only compilation model in which learned state may restrict but
-        cannot expand privilege;
+  \item deny-only compilation governed by the Monotonic Authority Principle,
+        under which learned state may restrict but cannot expand privilege;
   \item a restart- and revision-aware enforcement pipeline with authenticated
         short-lived policy records and durable negative audit; and
   \item an experimental Linux prototype demonstrating namespace-scoped seccomp
         enforcement, recovery, rollback, and failure semantics.
 \end{enumerate}
 
-\section{Relation to existing security mechanisms}
+\section{Related Work and Positioning}
 
 Linux Security Modules provide a common kernel framework for mandatory access
 control systems such as SELinux and AppArmor~\cite{lsm,selinux,apparmor}.
@@ -134,6 +151,17 @@ revision-bound kernel restriction that cannot grant privilege and remains
 auditable across restart, rollback, and component failure. Detection quality is
 deliberately outside the central claim: FSMs, sequence rules, windows, proxies,
 and ASM-CM all enter through the same state-engine boundary.
+
+ActPlane is particularly close in motivation: it bridges agent-level policy
+context to OS-level enforcement, uses an information-flow DSL for cross-event
+policies, and implements kernel mediation with eBPF~\cite{actplane}. Unix-AGB
+addresses a complementary systems boundary. Rather than allowing an agent to
+declare the kernel policy, it treats trajectory state as derived and
+potentially learned input to a deterministic compiler. The resulting records
+are deny-only, authenticated, revision-bound, expiring, and tied to durable
+canonical evidence. Its emphasis is therefore persistent state across restart
+and policy revision, monotonic authority, auditable negative decisions, and
+explicit recovery and failure semantics.
 
 \section{System decomposition}
 
@@ -298,8 +326,14 @@ stale, incomplete, or inconsistent input yields fail-closed
 \texttt{ABSTAIN}.
 
 Only \texttt{DENY} is compiled. Neither learned state nor an unavailable cache
-can manufacture permission. Base Linux policy remains authoritative, and the
-stateful layer can maintain or reduce existing privilege but cannot expand it.
+can manufacture permission.
+
+\paragraph{Monotonic Authority Principle.}
+State-derived decisions may preserve or reduce authority granted by the base
+policy, but never expand it. Base Linux policy therefore remains authoritative
+when inference abstains, state expires, or the stateful control plane becomes
+unavailable. Deny-only compilation is the concrete enforcement rule that
+realizes this principle in Unix-AGB.
 
 \subsection{Durability before restriction}
 
@@ -449,10 +483,10 @@ while an unprotected control remained unaffected.
 \toprule
 Experiment & Observed result \\
 \midrule
-Retained-listener guardian, 256 target calls & 256/256 returned \texttt{EACCES}; decision latency 44~$\mu$s p50, 49~$\mu$s p95, 68~$\mu$s p99 \\
-Concurrent broker, 256 target calls & 256/256 returned \texttt{EACCES}; 1.148~ms p50, 1.939~ms p95, 2.366~ms p99 \\
-In-flight worker failure & Exact pending notification returned \texttt{EACCES} in 123~$\mu$s; replacement worker ready in 9.839~ms \\
-Exact-launch VM enforcement & Protected external connect returned \texttt{EACCES}; loopback and unprotected control remained unaffected \\
+Retained-listener guardian, 256 target calls~\cite{guardian} & 256/256 returned \texttt{EACCES}; decision latency 44~$\mu$s p50, 49~$\mu$s p95, 68~$\mu$s p99 \\
+Concurrent broker, 256 target calls~\cite{concurrency} & 256/256 returned \texttt{EACCES}; 1.148~ms p50, 1.939~ms p95, 2.366~ms p99 \\
+In-flight worker failure~\cite{inflight} & Exact pending notification returned \texttt{EACCES} in 123~$\mu$s; replacement worker ready in 9.839~ms \\
+Exact-launch VM enforcement~\cite{exactlaunch} & Protected external connect returned \texttt{EACCES}; loopback and unprotected control remained unaffected \\
 Authenticated cache transitions & Corrupt reload retained the last valid denial; authenticated empty rotation removed it \\
 Service-supervision audit & 191~$\mu$s p50 and 276~$\mu$s p95/p99, including durable audit \\
 \bottomrule
@@ -549,7 +583,9 @@ The durable boundaries are the contribution: canonical facts remain separate
 from derived state; identity survives PID reuse; uncertainty becomes
 \texttt{ABSTAIN}; only denial is compiled; audit precedes restriction; and the
 listener remains available while replaceable policy machinery recovers. The
-current evidence shows that these mechanisms can be assembled and tested in a
+combination of Persistent Causal State, Deny-Only Compilation, and Monotonic
+Authority is intended to apply beyond this particular runtime. The current
+evidence shows that these mechanisms can be assembled and tested in a
 packaged, opt-in Linux prototype. It does not yet show production readiness or
 general unknown-attack detection. Advancing from mechanism to security claim
 requires the frozen promotion matrix: independent live Gate 3 decision binding,
@@ -607,6 +643,12 @@ S. Forrest et al.,
 \emph{A Sense of Self for Unix Processes}, IEEE Symposium on Security and
 Privacy, 1996.
 
+\bibitem{actplane}
+Y. Zheng et al.,
+\emph{ActPlane: Programmable OS-Level Policy Enforcement for Agent Harnesses},
+arXiv:2606.25189v2, 2026,
+\url{https://arxiv.org/abs/2606.25189v2}.
+
 \bibitem{architecture}
 Unix-AGB Project,
 \emph{Unix-AGB Architecture Specification},
@@ -631,6 +673,26 @@ Unix-AGB Project,
 Unix-AGB Project,
 \emph{Gate 4 Gate 3 Service Supervision},
 \texttt{docs/report/108\_gate4\_gate3\_service\_supervision\_20260817.md}, 2026.
+
+\bibitem{concurrency}
+Unix-AGB Project,
+\emph{Gate 4 Concurrent Seccomp Broker},
+\texttt{docs/report/94\_gate4\_concurrent\_seccomp\_broker\_20260817.md}, 2026.
+
+\bibitem{guardian}
+Unix-AGB Project,
+\emph{Gate 4 Retained-Listener Guardian},
+\texttt{docs/report/96\_gate4\_retained\_listener\_guardian\_20260817.md}, 2026.
+
+\bibitem{inflight}
+Unix-AGB Project,
+\emph{Gate 4 In-Flight Notification Recovery},
+\texttt{docs/report/97\_gate4\_inflight\_notification\_recovery\_20260817.md}, 2026.
+
+\bibitem{exactlaunch}
+Unix-AGB Project,
+\emph{Gate 4 Persistent Exact-Launch Enforcement},
+\texttt{docs/report/105\_gate4\_persistent\_exact\_launch\_enforcement\_20260817.md}, 2026.
 
 \end{thebibliography}
 

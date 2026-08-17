@@ -42,7 +42,7 @@ tracepoint:syscalls:sys_enter_connect
   } else if ($family == 1) {
     $sun = (struct sockaddr_un *)$sa;
     printf("AGB_BPF|network.connect.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_UNIX|unix_path=%s|socket_type=%d|protocol=%d|addrlen=%d|syscall=connect\n",
-      tid, pid, uid, gid, comm, $fd, str($sun->sun_path), $type, $protocol, args->addrlen);
+      tid, pid, uid, gid, comm, $fd, str(uptr($sa) + 2), $type, $protocol, args->addrlen);
   } else {
     printf("AGB_BPF|network.connect.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=connect\n",
       tid, pid, uid, gid, comm, $fd, $family, $type, $protocol, args->addrlen);

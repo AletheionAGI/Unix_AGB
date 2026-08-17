@@ -355,6 +355,17 @@ complete controlled model-to-kernel chain, but the rebound input was not newly
 captured BPF telemetry and is explicitly ineligible for promotion. See reports
 109–110.
 
+A subsequent Ubuntu 24.04 run removed report 110's principal replay limitation.
+Twelve unmodified, newly captured BPF events from the exact already-supervised
+PID produced one unanimous ensemble `DENY`; authenticated publication changed
+that PID's next external connect to `EACCES`, left an unprotected control at
+`ECONNREFUSED`, and empty rotation restored `ECONNREFUSED` in the same PID.
+Capture reported zero lost events and purge left zero AGB residue. This supports
+the live BPF model-to-kernel chain, but does not yet complete promotion domain
+1: its remaining negative-input matrix must run under the same result-aware v2
+revision and package digest and produce authenticated promotion evidence. See
+reports 111–112.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;

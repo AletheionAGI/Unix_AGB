@@ -4,6 +4,8 @@
 into persistent causal state and compiles it into deterministic enforcement
 policies.**
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21974853.svg)](https://doi.org/10.5281/zenodo.21974853)
+
 Unix-AGB is designed as an additional security layer over Ubuntu/Linux, not as
 a new kernel or a replacement for AppArmor, Linux Security Modules, BPF, audit
 logs, SIEM, or EDR. Its central separation of responsibilities is:

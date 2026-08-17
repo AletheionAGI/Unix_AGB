@@ -1,0 +1,48 @@
+{
+  "proof": "unix-agb-gate4-live-bpf-gate3-v1",
+  "base_revision": "10981f9",
+  "package": "unix-agb-egress-guardian-lab_0.3.1_all.deb",
+  "package_sha256": "a14a3d342da5ba6b2ca5c49824784d99f6d414afcd3b5dc2b4fc556d784b0c00",
+  "policy_revision": "policy:bpf-observer-v2",
+  "asm_source_revision": "4c8eddf2f07d9aec800769323d7e1effbd64815a",
+  "checkpoint_sha256s": [
+    "96293688518fc0a2e83525af6ad28d16f39677980432762328bf4ad8aac654de",
+    "a1a67b4e066b0cabba00d0f17d27c77d29ac2d0ad3dfabc8baf61ff51dba9342",
+    "698979a684a02c4191e3a5ed09256df86d3e81939de988e0809e5433cbc90f4b"
+  ],
+  "capture": {
+    "source": "bpf",
+    "lost_events": 0,
+    "selected_events": 12,
+    "event_objects_rewritten": false,
+    "corpus_sha256": "455e80380a0217a3e2f362ded6f65c8e980e78b0337f79e71aacc6367c36fcde"
+  },
+  "gate3": {
+    "effects": {"ALLOW": 11, "DENY": 1},
+    "member_inferences": 3,
+    "disagreement_rate": 0.0,
+    "cache_entries": 1,
+    "audit_sha256": "c97030cd6ec4f73f9a8e256cd5a3ac0ce94e49587e4658359980e4572b57a47f",
+    "cache_sha256": "f054030649b1af2e9360a06d97e2d7f256910407ddc0f2bc2170a64cbdeb2feb",
+    "pipeline_sha256": "d98d4d32140f003a2f5370187da9c555cdbacbdb5ce1d78d478eddc1c94d546f"
+  },
+  "kernel_transition": {
+    "protected_during_deny": "EACCES",
+    "unprotected_control_during_deny": "ECONNREFUSED",
+    "same_pid_after_empty_rotation": "ECONNREFUSED",
+    "protected_fail_open": 0,
+    "cross_scope_effects": 0,
+    "purge_left_zero_residue": true
+  },
+  "guardian_audit": {
+    "records_for_exact_namespace": 58,
+    "allow": 57,
+    "deny": 1,
+    "latency_us": {"p50": 252.5, "p95": 317, "p99": 377, "max": 493}
+  },
+  "live_bpf_chain_supported": true,
+  "report_110_replay_limitation_removed": true,
+  "first_promotion_domain_supported": false,
+  "promotion_status": "controlled-prototype",
+  "remaining_domain_1_work": "Run ALLOW, ABSTAIN, expired, corrupted, replayed and wrong-revision negative inputs under the same package digest and policy revision, then emit authenticated promotion evidence."
+}

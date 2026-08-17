@@ -24,7 +24,12 @@
 
 \title{Estado Causal Persistente para Enforcement no Sistema Operacional\\
 \large Engenharia de um Runtime de Política Linux com Estado, Auditoria e Falha Fechada}
-\author{Projeto Unix-AGB}
+
+\author{
+Felipe Maya Muniz\\
+\textit{Unix-AGB Project / AletheionAGI}
+}
+
 \date{17 de agosto de 2026}
 
 \begin{document}
@@ -40,8 +45,10 @@ normalizados do kernel atualizam estado causal persistente e isolado por
 namespace; uma camada determinística de política compila apenas decisões
 restritivas em registros de enforcement de curta duração. Eventos exatos
 permanecem como verdade histórica, estado aprendido continua substituível e o
-Linux preserva a autoridade final de enforcement. Este artigo explica a
-engenharia desse pipeline: contratos, identidade, ordenação, persistência,
+Linux preserva a autoridade final de enforcement. A restrição central do
+projeto é a \emph{autoridade monotônica}: inferência aprendida ou com estado só
+pode reduzir privilégios existentes; não pode fabricar permissão. Este artigo
+explica a engenharia desse pipeline: contratos, identidade, ordenação, persistência,
 revisões de política, caches autenticados, handoff por seccomp user notification,
 recuperação, empacotamento e validação experimental. Também delimita o resultado:
 o sistema atual é um protótipo controlado com enforcement de egress empacotado,
@@ -49,6 +56,16 @@ opt-in e limitado a processos lançados pelo mecanismo; não é um serviço de
 segurança de produção e ainda não demonstra eficácia contra ataques naturais
 desconhecidos.
 \end{abstract}
+
+\noindent\textbf{Palavras-chave:}
+estado causal persistente,
+segurança de sistemas operacionais,
+aplicação de políticas com estado,
+autoridade monotônica,
+compilação somente de negações,
+segurança Linux,
+seccomp,
+segurança em tempo de execução.
 
 \section{O problema de engenharia}
 
@@ -92,15 +109,15 @@ Este trabalho apresenta quatro contribuições:
 \begin{enumerate}[leftmargin=*]
   \item uma arquitetura de política para sistema operacional que separa estado
         causal persistente, evidência canônica e enforcement determinístico;
-  \item um modelo de compilação deny-only no qual estado aprendido pode
-        restringir, mas não ampliar privilégios;
+  \item compilação deny-only regida pelo Princípio da Autoridade Monotônica, no
+        qual estado aprendido pode restringir, mas não ampliar privilégios;
   \item um pipeline de enforcement ciente de reinícios e revisões, com registros
         autenticados e expirantes de política e auditoria negativa durável; e
   \item um protótipo Linux experimental que demonstra enforcement seccomp com
         escopo de namespace, recuperação, rollback e semântica de falhas.
 \end{enumerate}
 
-\section{Relação com mecanismos de segurança existentes}
+\section{Trabalhos Relacionados e Posicionamento}
 
 Linux Security Modules fornece uma infraestrutura comum no kernel para sistemas
 de controle de acesso obrigatório como SELinux e AppArmor
@@ -124,6 +141,18 @@ autenticada, expirante, vinculada a revisão, incapaz de conceder privilégio e
 auditável através de reinício, rollback e falha de componentes. Qualidade de
 detecção fica deliberadamente fora da contribuição central: FSMs, regras de
 sequência, janelas, proxies e ASM-CM entram pela mesma fronteira de motor.
+
+O ActPlane é especialmente próximo em motivação: conecta contexto de política
+no nível do agente ao enforcement no sistema operacional, usa uma DSL de fluxo
+de informação para políticas entre eventos e implementa mediação no kernel com
+eBPF~\cite{actplane}. O Unix-AGB trata uma fronteira complementar de sistemas.
+Em vez de permitir que um agente declare a política do kernel, considera o
+estado de trajetória uma entrada derivada e potencialmente aprendida para um
+compilador determinístico. Os registros resultantes são deny-only, autenticados,
+vinculados a revisão, expirantes e ligados a evidência canônica durável. Sua
+ênfase recai, portanto, em estado persistente através de reinícios e revisões de
+política, autoridade monotônica, decisões negativas auditáveis e semânticas
+explícitas de recuperação e falha.
 
 \section{Decomposição do sistema}
 
@@ -281,8 +310,14 @@ monitoramento produz \texttt{ALLOW} em shadow. Entrada desconhecida,
 desatualizada, incompleta ou inconsistente produz \texttt{ABSTAIN} fail-closed.
 
 Somente \texttt{DENY} é compilado. Nem o modelo nem cache ausente fabricam
-permissão. A política Linux de base conserva autoridade; a camada com estado
-pode manter ou reduzir privilégios, nunca ampliá-los.
+permissão.
+
+\paragraph{Princípio da Autoridade Monotônica.}
+Decisões derivadas de estado podem preservar ou reduzir a autoridade concedida
+pela política-base, mas nunca ampliá-la. A política Linux de base permanece,
+portanto, autoritativa quando a inferência se abstém, o estado expira ou o plano
+de controle com estado fica indisponível. A compilação deny-only é a regra
+concreta de enforcement que realiza esse princípio no Unix-AGB.
 
 \subsection{Durabilidade antes da restrição}
 
@@ -421,10 +456,10 @@ inalterado.
 \toprule
 Experimento & Resultado observado \\
 \midrule
-Guardian com listener retido, 256 chamadas-alvo & 256/256 retornaram \texttt{EACCES}; latência de decisão de 44~$\mu$s p50, 49~$\mu$s p95 e 68~$\mu$s p99 \\
-Broker concorrente, 256 chamadas-alvo & 256/256 retornaram \texttt{EACCES}; 1,148~ms p50, 1,939~ms p95 e 2,366~ms p99 \\
-Falha de worker em voo & A notificação pendente exata recebeu \texttt{EACCES} em 123~$\mu$s; worker substituto pronto em 9,839~ms \\
-Enforcement exact-launch em VM & Conexão externa protegida recebeu \texttt{EACCES}; loopback e controle não protegido permaneceram inalterados \\
+Guardian com listener retido, 256 chamadas-alvo~\cite{guardian} & 256/256 retornaram \texttt{EACCES}; latência de decisão de 44~$\mu$s p50, 49~$\mu$s p95 e 68~$\mu$s p99 \\
+Broker concorrente, 256 chamadas-alvo~\cite{concurrency} & 256/256 retornaram \texttt{EACCES}; 1,148~ms p50, 1,939~ms p95 e 2,366~ms p99 \\
+Falha de worker em voo~\cite{inflight} & A notificação pendente exata recebeu \texttt{EACCES} em 123~$\mu$s; worker substituto pronto em 9,839~ms \\
+Enforcement exact-launch em VM~\cite{exactlaunch} & Conexão externa protegida recebeu \texttt{EACCES}; loopback e controle não protegido permaneceram inalterados \\
 Transições do cache autenticado & Reload corrompido reteve a última negação válida; rotação vazia autenticada a removeu \\
 Auditoria na supervisão de serviço & 191~$\mu$s p50 e 276~$\mu$s p95/p99, incluindo auditoria durável \\
 \bottomrule
@@ -514,8 +549,10 @@ e expirante $\rightarrow$ enforcement com escopo.
 As fronteiras duráveis são a contribuição: fatos separados de estado derivado;
 identidade resistente a PID reuse; incerteza como \texttt{ABSTAIN}; apenas
 \texttt{DENY} compilado; auditoria antes da restrição; listener disponível
-durante recuperação da política. A evidência atual mostra que os mecanismos
-podem ser montados e testados num protótipo Linux empacotado e opt-in. Não mostra
+durante recuperação da política. Estado Causal Persistente, Compilação Deny-Only
+e Autoridade Monotônica pretendem ser conceitos aplicáveis além deste runtime
+específico. A evidência atual mostra que os mecanismos podem ser montados e
+testados num protótipo Linux empacotado e opt-in. Não mostra
 prontidão de produção nem detecção geral de ataques desconhecidos. A promoção
 exige a matriz congelada: binding independente e vivo de decisão Gate 3,
 isolamento concorrente, endurance, recursos, update/rollback autenticado,
@@ -572,6 +609,12 @@ S. Forrest et al.,
 \emph{A Sense of Self for Unix Processes}, IEEE Symposium on Security and
 Privacy, 1996.
 
+\bibitem{actplane}
+Y. Zheng et al.,
+\emph{ActPlane: Programmable OS-Level Policy Enforcement for Agent Harnesses},
+arXiv:2606.25189v2, 2026,
+\url{https://arxiv.org/abs/2606.25189v2}.
+
 \bibitem{architecture}
 Projeto Unix-AGB,
 \emph{Especificação de Arquitetura Unix-AGB},
@@ -596,6 +639,26 @@ Projeto Unix-AGB,
 Projeto Unix-AGB,
 \emph{Gate 4 Gate 3 Service Supervision},
 \texttt{docs/report/108\_gate4\_gate3\_service\_supervision\_20260817.md}, 2026.
+
+\bibitem{concurrency}
+Projeto Unix-AGB,
+\emph{Gate 4 Concurrent Seccomp Broker},
+\texttt{docs/report/94\_gate4\_concurrent\_seccomp\_broker\_20260817.md}, 2026.
+
+\bibitem{guardian}
+Projeto Unix-AGB,
+\emph{Gate 4 Retained-Listener Guardian},
+\texttt{docs/report/96\_gate4\_retained\_listener\_guardian\_20260817.md}, 2026.
+
+\bibitem{inflight}
+Projeto Unix-AGB,
+\emph{Gate 4 In-Flight Notification Recovery},
+\texttt{docs/report/97\_gate4\_inflight\_notification\_recovery\_20260817.md}, 2026.
+
+\bibitem{exactlaunch}
+Projeto Unix-AGB,
+\emph{Gate 4 Persistent Exact-Launch Enforcement},
+\texttt{docs/report/105\_gate4\_persistent\_exact\_launch\_enforcement\_20260817.md}, 2026.
 
 \end{thebibliography}
 
