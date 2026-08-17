@@ -243,8 +243,13 @@ the live broker allowed an inherited out-of-scope probe. Total listener loss
 produced a negative result: the disposable group stalled until its two-second
 watchdog terminated it, and the inherited out-of-scope subprocess was also
 disrupted. Formal live-listener latency/overload measurement is complete;
-persistent lifecycle, authenticated policy distribution, and safe
-listener-loss recovery remain promotion blockers. See reports 91–94.
+a subsequent prototype retained the listener in a minimal supervisor and
+restarted an injected crashed policy worker. All 64 target calls were denied,
+the out-of-scope probe remained allowed, exactly one replacement generation was
+observed, and recovery-path latency was 1.276 ms p50, 4.081 ms p95, and
+4.396 ms p99. This narrows recoverable failure to the optional worker;
+persistent supervisor lifecycle, authenticated policy distribution, and safe
+listener-owner failure/recovery remain promotion blockers. See reports 91–95.
 
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;

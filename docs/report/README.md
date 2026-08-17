@@ -54,6 +54,9 @@ remains authoritative in `ROADMAP.md`.
 - report 94: real concurrent seccomp notification latency, bounded overload,
   timeout and adapter-failure behavior, plus the preserved negative result that
   listener loss stalls and disrupts an inherited out-of-scope subprocess.
+- report 95: a minimal listener-owning supervisor that fails closed for one
+  protected decision, restarts a crashed policy worker, and preserves the
+  out-of-scope probe while retaining listener loss as an explicit blocker.
 
 ## Administrative boundary
 

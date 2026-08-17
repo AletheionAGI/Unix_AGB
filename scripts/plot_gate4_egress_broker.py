@@ -47,7 +47,17 @@ def main() -> None:
     axes[1].set_ylabel("Responses")
     axes[1].set_title("Injected degraded paths")
     axes[1].legend()
-    fig.suptitle("Unix-AGB Gate 4 — disposable concurrent seccomp broker")
+    recovery_index = next(index for index, item in enumerate(scenarios) if item["name"] == "worker-crash-recovery")
+    axes[1].annotate(
+        "worker restarted",
+        (recovery_index, 0),
+        xytext=(recovery_index, max(max(overload), max(timeouts)) * 0.15),
+        ha="center",
+        color="#15803d",
+        fontweight="bold",
+        arrowprops={"arrowstyle": "->", "color": "#15803d"},
+    )
+    fig.suptitle("Unix-AGB Gate 4 — supervised concurrent seccomp broker")
     fig.tight_layout()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.output, dpi=180)

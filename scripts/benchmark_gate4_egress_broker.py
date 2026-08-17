@@ -22,6 +22,7 @@ from typing import Any
 
 from agb_fake_asm.egress_policy import ExecutableEgressPolicy
 from agb_fake_asm.enforcement_scope import ArtifactIdentity, ExecutableProcessScope, ProcessIdentity, enforcement_effect, process_tgid
+from agb_fake_asm.recovery_supervisor import RecoveringPolicyWorker
 from run_egress_seccomp_pilot import (
     NOTIFICATION,
     SECCOMP_IOCTL_NOTIF_RECV,
@@ -119,6 +120,7 @@ def evaluate_notification(
     policy: ExecutableEgressPolicy,
     delay_ms: float,
     fail_adapter: bool,
+    recovery_worker: RecoveringPolicyWorker | None,
 ) -> dict[str, Any]:
     if delay_ms:
         time.sleep(delay_ms / 1000)
@@ -142,11 +144,21 @@ def evaluate_notification(
         })
         policy_effect = decision["effect"]
         reason = decision["reason"] if not adapter_failed else reason
+    worker_restarted = False
+    worker_generation = None
+    if recovery_worker is not None:
+        supervised = recovery_worker.decide(policy_effect, target=target)
+        policy_effect = supervised.effect
+        reason = supervised.reason
+        worker_restarted = supervised.worker_restarted
+        worker_generation = supervised.generation
     return {
         "target": target,
         "adapter_failed": adapter_failed,
         "policy_effect": policy_effect,
         "reason": reason,
+        "worker_restarted": worker_restarted,
+        "worker_generation": worker_generation,
     }
 
 
@@ -161,6 +173,7 @@ def run_scenario(
     delay_ms: float = 0,
     fail_adapter: bool = False,
     listener_loss: bool = False,
+    recover_worker_crash: bool = False,
 ) -> dict[str, Any]:
     parent, child = socket.socketpair(type=socket.SOCK_SEQPACKET)
     pid = os.fork()
@@ -184,6 +197,9 @@ def run_scenario(
     started_ns = time.monotonic_ns()
     listener_loss_ns: int | None = None
     status_report: dict[str, Any] | None = None
+    recovery_worker = RecoveringPolicyWorker(timeout_ms=50, crash_first_target=True) if recover_worker_crash else None
+    worker_restarts = 0
+    worker_generations: set[int] = set()
 
     def respond(notification_id: int, deny: bool) -> bool:
         nonlocal invalid_ids
@@ -215,6 +231,9 @@ def run_scenario(
                     timed_out += timeout and result["target"] and effect == "DENY"
                     target_denied += result["target"] and effect == "DENY"
                     outsider_allowed += (not result["target"]) and effect == "ALLOW"
+                    worker_restarts += result.get("worker_restarted", False)
+                    if result.get("worker_generation") is not None:
+                        worker_generations.add(result["worker_generation"])
 
             watched = [parent] if listener < 0 else [parent, listener]
             ready, _, _ = select.select(watched, [], [], 0.001)
@@ -270,10 +289,12 @@ def run_scenario(
                     target_denied += target and effect == "DENY"
                     outsider_allowed += (not target) and effect == "ALLOW"
                 continue
-            future = executor.submit(evaluate_notification, notified_tid, args, pid, scope, policy, delay_ms, fail_adapter)
+            future = executor.submit(evaluate_notification, notified_tid, args, pid, scope, policy, delay_ms, fail_adapter, recovery_worker)
             pending[future] = (notification_id, notification_started)
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
+        if recovery_worker is not None:
+            recovery_worker.close()
         if listener >= 0:
             os.close(listener)
         parent.close()
@@ -291,9 +312,9 @@ def run_scenario(
     completed = int(status_report["attempts"])
     return {
         "name": name,
-        "configuration": {"workload_threads": workers, "attempts": attempts, "broker_workers": broker_workers, "queue_capacity": queue_capacity, "timeout_ms": timeout_ms, "injected_delay_ms": delay_ms, "injected_adapter_failure": fail_adapter},
+        "configuration": {"workload_threads": workers, "attempts": attempts, "broker_workers": broker_workers, "queue_capacity": queue_capacity, "timeout_ms": timeout_ms, "injected_delay_ms": delay_ms, "injected_adapter_failure": fail_adapter, "injected_policy_worker_crash": recover_worker_crash},
         "notifications_received": received,
-        "responses": {"deny": denied, "allow": allowed, "target_denied": target_denied, "outsider_allowed": outsider_allowed, "overload_fail_closed": overloaded, "timeout_fail_closed": timed_out},
+        "responses": {"deny": denied, "allow": allowed, "target_denied": target_denied, "outsider_allowed": outsider_allowed, "overload_fail_closed": overloaded, "timeout_fail_closed": timed_out, "policy_worker_restarts": worker_restarts, "policy_worker_generations": sorted(worker_generations)},
         "workload": status_report,
         "latency_us": latency_summary(latencies),
         "throughput_responses_per_second": round((denied + allowed) / (wall_ns / 1e9), 2),
@@ -317,9 +338,10 @@ def main() -> None:
         run_scenario("bounded-overload", workers=args.threads * 2, attempts=args.attempts, broker_workers=1, queue_capacity=2, timeout_ms=100, delay_ms=5),
         run_scenario("decision-timeout", workers=args.threads, attempts=max(16, args.attempts // 4), broker_workers=2, queue_capacity=64, timeout_ms=1, delay_ms=5),
         run_scenario("adapter-failure", workers=args.threads, attempts=max(16, args.attempts // 4), broker_workers=2, queue_capacity=64, timeout_ms=100, fail_adapter=True),
+        run_scenario("worker-crash-recovery", workers=args.threads, attempts=max(16, args.attempts // 4), broker_workers=2, queue_capacity=64, timeout_ms=100, recover_worker_crash=True),
         run_scenario("listener-loss", workers=args.threads, attempts=max(16, args.attempts // 4), broker_workers=2, queue_capacity=64, timeout_ms=100, listener_loss=True),
     ]
-    for scenario in scenarios[:4]:
+    for scenario in scenarios[:5]:
         if not scenario["completed"] or scenario["workload"]["outsider_exit_code"] != 0:
             raise RuntimeError(f"live-listener scenario failed isolation/completion: {scenario['name']}")
         errno_counts = scenario["workload"]["errno_counts"]
@@ -328,19 +350,20 @@ def main() -> None:
         if scenario["invalid_notification_ids"]:
             raise RuntimeError(f"invalid notification IDs: {scenario['name']}")
     report = {
-        "proof": "unix-agb-gate4-concurrent-seccomp-broker-v1",
+        "proof": "unix-agb-gate4-supervised-seccomp-broker-v2",
         "measurement_boundary": "connect syscall notification received by userspace through seccomp response submission",
         "host": {"kernel": os.uname().release, "machine": os.uname().machine, "python": sys.version.split()[0]},
         "scenarios": scenarios,
         "criteria": {
-            "live_listener_target_connects_denied": all(s["responses"]["target_denied"] == s["configuration"]["attempts"] for s in scenarios[:4]),
-            "live_listener_outsider_connects_allowed": all(s["responses"]["outsider_allowed"] >= 1 and s["workload"]["outsider_exit_code"] == 0 for s in scenarios[:4]),
+            "live_listener_target_connects_denied": all(s["responses"]["target_denied"] == s["configuration"]["attempts"] for s in scenarios[:5]),
+            "live_listener_outsider_connects_allowed": all(s["responses"]["outsider_allowed"] >= 1 and s["workload"]["outsider_exit_code"] == 0 for s in scenarios[:5]),
             "overload_exercised": scenarios[1]["responses"]["overload_fail_closed"] > 0,
             "timeouts_exercised": scenarios[2]["responses"]["timeout_fail_closed"] > 0,
             "adapter_failure_exercised": scenarios[3]["configuration"]["injected_adapter_failure"],
-            "zero_invalid_notification_ids": all(s["invalid_notification_ids"] == 0 for s in scenarios[:4]),
-            "listener_loss_stalls_until_watchdog": scenarios[4]["workload"].get("watchdog_terminated", False) and scenarios[4]["workload"]["attempts"] == 0,
-            "listener_loss_preserves_inherited_outsider": scenarios[4]["workload"]["outsider_exit_code"] == 0,
+            "worker_crash_recovered": scenarios[4]["responses"]["policy_worker_restarts"] == 1 and len(scenarios[4]["responses"]["policy_worker_generations"]) >= 1,
+            "zero_invalid_notification_ids": all(s["invalid_notification_ids"] == 0 for s in scenarios[:5]),
+            "listener_loss_stalls_until_watchdog": scenarios[5]["workload"].get("watchdog_terminated", False) and scenarios[5]["workload"]["attempts"] == 0,
+            "listener_loss_preserves_inherited_outsider": scenarios[5]["workload"]["outsider_exit_code"] == 0,
             "system_wide_changes": False,
         },
         "limitations": [
