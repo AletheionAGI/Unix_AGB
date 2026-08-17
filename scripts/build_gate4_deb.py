@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 PACKAGE = "unix-agb-egress-guardian-lab"
 
 
@@ -63,8 +63,14 @@ if [ ! -e /etc/unix-agb/handoff.key ]; then
   umask 027
   head -c 32 /dev/urandom | base64 > /etc/unix-agb/handoff.key
 fi
+if [ ! -e /etc/unix-agb/gate3-cache.key ]; then
+  umask 027
+  head -c 32 /dev/urandom | base64 > /etc/unix-agb/gate3-cache.key
+fi
 chown root:unix-agb-guardian /etc/unix-agb/handoff.key
 chmod 0640 /etc/unix-agb/handoff.key
+chown root:unix-agb-guardian /etc/unix-agb/gate3-cache.key
+chmod 0640 /etc/unix-agb/gate3-cache.key
 systemctl daemon-reload >/dev/null 2>&1 || true
 exit 0
 """, 0o755)
@@ -81,10 +87,12 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 if [ "$1" = purge ]; then
   rm -f /etc/unix-agb/egress-guardian.enabled
   rm -f /etc/unix-agb/handoff.key
+  rm -f /etc/unix-agb/gate3-cache.key
   rm -f /run/unix-agb/guardian.sock
   rm -f /run/unix-agb/control.sock
   rm -f /var/lib/unix-agb/egress-guardian-state.json
   rm -f /var/lib/unix-agb/egress-enforcement.jsonl
+  rm -f /var/lib/unix-agb/gate3-cache.json
   if getent passwd unix-agb-guardian >/dev/null; then
     deluser --system unix-agb-guardian >/dev/null 2>&1 || true
   fi
@@ -98,13 +106,17 @@ exit 0
 
         copy(ROOT / "deploy/agb-egress-guardian", tree / "usr/libexec/unix-agb/agb-egress-guardian", 0o755)
         copy(ROOT / "deploy/agb-egress-launch", tree / "usr/libexec/unix-agb/agb-egress-launch", 0o755)
+        copy(ROOT / "deploy/agb_gate3_runtime.py", tree / "usr/libexec/unix-agb/agb_gate3_runtime.py", 0o644)
         copy(ROOT / "deploy/unix-agb-egress-guardian.service", tree / "usr/lib/systemd/system/unix-agb-egress-guardian.service", 0o644)
         copy(ROOT / "deploy/egress-guardian.json.example", tree / "usr/share/doc/unix-agb/egress-guardian.json.example", 0o644)
         write(tree / "etc/unix-agb/egress-guardian.json", """{
   "enabled": false,
-  "mode": "laboratory-exact-launch",
-  "policy_revision": "policy:gate4-egress-guardian-v2",
+  "mode": "laboratory-gate3-service",
+  "policy_revision": "policy:gate4-egress-guardian-v3",
   "handoff_key": "/etc/unix-agb/handoff.key",
+  "gate3_cache": "/var/lib/unix-agb/gate3-cache.json",
+  "gate3_cache_key": "/etc/unix-agb/gate3-cache.key",
+  "gate3_policy_revision": "policy:gate3-service-v1",
   "protected_cgroup": null
 }
 """)

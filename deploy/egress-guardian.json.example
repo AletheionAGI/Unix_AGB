@@ -1,8 +1,11 @@
 {
   "enabled": false,
-  "mode": "laboratory-exact-launch",
-  "policy_revision": "policy:gate4-egress-guardian-v2",
+  "mode": "laboratory-gate3-service",
+  "policy_revision": "policy:gate4-egress-guardian-v3",
   "handoff_key": "/etc/unix-agb/handoff.key",
+  "gate3_cache": "/var/lib/unix-agb/gate3-cache.json",
+  "gate3_cache_key": "/etc/unix-agb/gate3-cache.key",
+  "gate3_policy_revision": "policy:gate3-service-v1",
   "recovery_deadline_ms": 50,
   "restart_budget": {
     "maximum": 2,

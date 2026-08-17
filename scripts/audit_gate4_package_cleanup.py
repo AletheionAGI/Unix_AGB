@@ -19,10 +19,12 @@ PATHS = (
     "/etc/unix-agb/egress-guardian.json",
     "/etc/unix-agb/egress-guardian.enabled",
     "/etc/unix-agb/handoff.key",
+    "/etc/unix-agb/gate3-cache.key",
     "/usr/lib/systemd/system/unix-agb-egress-guardian.service",
     "/usr/libexec/unix-agb",
     "/usr/libexec/unix-agb/agb-egress-guardian",
     "/usr/libexec/unix-agb/agb-egress-launch",
+    "/usr/libexec/unix-agb/agb_gate3_runtime.py",
     "/usr/share/doc/unix-agb",
     "/usr/share/doc/unix-agb/egress-guardian.json.example",
     "/run/unix-agb",
@@ -31,6 +33,7 @@ PATHS = (
     "/var/lib/unix-agb",
     "/var/lib/unix-agb/egress-guardian-state.json",
     "/var/lib/unix-agb/egress-enforcement.jsonl",
+    "/var/lib/unix-agb/gate3-cache.json",
     "/etc/systemd/system/multi-user.target.wants/unix-agb-egress-guardian.service",
 )
 

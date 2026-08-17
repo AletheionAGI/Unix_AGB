@@ -1,0 +1,71 @@
+{
+  "artifact": {
+    "name": "unix-agb-egress-guardian-lab_0.3.0_all.deb",
+    "sha256": "ecf51aaf34c573b3156c9f478401ea859ff56c3732408718e0794cae6fb8a39d"
+  },
+  "audit": {
+    "allow": 9,
+    "deny": 7,
+    "latency_us": {
+      "max": 276,
+      "p50": 191,
+      "p95": 276,
+      "p99": 276
+    },
+    "reasons": {
+      "ACTIVE_GATE3_TRAJECTORY_DENY": 7,
+      "LOOPBACK": 2,
+      "NO_ACTIVE_GATE3_DENY": 7
+    },
+    "records": 16
+  },
+  "base_revision": "14743a1",
+  "criteria": {
+    "authenticated_empty_rotation_restored_connect": true,
+    "authenticated_namespace_deny_returned_eacces": true,
+    "baseline_connect_continued": true,
+    "bounded_guardian_readiness": true,
+    "cache_tampering_retained_last_valid_deny": true,
+    "exact_namespace_bound_at_handoff": true,
+    "out_of_scope_control_unaffected": true,
+    "purge_left_zero_residue": true
+  },
+  "environment": "Ubuntu 24.04.4 LTS",
+  "first_promotion_domain_supported": false,
+  "negative_and_inconclusive_attempts": [
+    {
+      "result": "negative",
+      "summary": "The first short workload completed without observing EACCES; the control probe also contained a shell quoting error."
+    },
+    {
+      "result": "inconclusive",
+      "summary": "The first cache-tampering attempt began after the workload had already completed."
+    },
+    {
+      "result": "negative-fixed-and-retested",
+      "summary": "A restart race exposed that Type=simple became active before control.sock was published; a bounded two-second launcher readiness wait fixed the failure without releasing the child."
+    }
+  ],
+  "policy_revisions": {
+    "gate3": "policy:gate3-service-v1",
+    "guardian": "policy:gate4-egress-guardian-v3"
+  },
+  "proof": "unix-agb-gate4-gate3-service-supervision-v1",
+  "promotion_status": "controlled-prototype",
+  "scope": "controlled authenticated cache injection; no new neural inference or GPU training",
+  "supported": true,
+  "transition": {
+    "baseline_attempts_before_rotation": 5,
+    "control_result_during_deny": "ECONNREFUSED",
+    "deny_first_seen_at_attempt": 7,
+    "protected_result_after_authenticated_empty_rotation": "ECONNREFUSED",
+    "protected_result_after_deny": "EACCES",
+    "tampered_cache_protected_results": [
+      "EACCES",
+      "EACCES",
+      "EACCES",
+      "EACCES",
+      "EACCES"
+    ]
+  }
+}

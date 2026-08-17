@@ -3,7 +3,8 @@
 from __future__ import annotations
 import argparse, array, errno, fcntl, hashlib, hmac, json, os, select, signal, socket, struct, sys, threading, time
 from pathlib import Path
-REVISION="policy:gate4-egress-guardian-v2"; NOTE=struct.Struct("<QIIiIQQQQQQQ"); RECV=0xC0502100; SEND=0xC0182101; VALID=0x40082102; CONTINUE=1
+from agb_gate3_runtime import Gate3CacheError, Gate3RuntimePolicy
+REVISION="policy:gate4-egress-guardian-v3"; NOTE=struct.Struct("<QIIiIQQQQQQQ"); RECV=0xC0502100; SEND=0xC0182101; VALID=0x40082102; CONTINUE=1
 NONCES:set[str]=set()
 def encode(v:dict[str,object])->bytes:return json.dumps(v,sort_keys=True,separators=(",",":")).encode()
 def authenticate(message:dict[str,object],peer_pid:int,peer_uid:int,peer_gid:int,secret:bytes,now:int)->tuple[bool,str]:
@@ -25,6 +26,8 @@ def tgid(tid:int)->int:
  for line in Path(f"/proc/{tid}/status").read_text().splitlines():
   if line.startswith("Tgid:"):return int(line.split()[1])
  raise ValueError("missing Tgid")
+def process_namespace(pid:int)->str:
+ stat=Path(f"/proc/{pid}/stat").read_text().split();ticks=int(stat[21]);hz=os.sysconf("SC_CLK_TCK");boot=Path("/proc/sys/kernel/random/boot_id").read_text().strip();return f"process:{boot}:{pid}:{ticks*1_000_000_000//hz}"
 def local(adapter:socket.socket,address:int,length:int)->bool:
  if not 2<=length<=128:raise ValueError("sockaddr length")
  adapter.send(struct.pack("<QI",address,length));raw=adapter.recv(128)
@@ -33,7 +36,7 @@ def local(adapter:socket.socket,address:int,length:int)->bool:
  return (family==socket.AF_INET and len(raw)>=8 and raw[4]==127) or (family==socket.AF_INET6 and len(raw)>=24 and raw[8:24]==b"\0"*15+b"\1") or family==socket.AF_UNIX
 def answer(fd:int,n:int,deny:bool)->None:
  if valid(fd,n):fcntl.ioctl(fd,SEND,struct.pack("<Qqii",n,0,-errno.EACCES if deny else 0,0 if deny else CONTINUE))
-def serve(fd:int,adapter:socket.socket,target:int,audit:Path,crash_after:int|None,generation:int)->bool:
+def serve(fd:int,adapter:socket.socket,target:int,namespace_id:str,policy:Gate3RuntimePolicy,audit:Path,crash_after:int|None,generation:int)->bool:
  processed=0
  try:
   while True:
@@ -42,47 +45,53 @@ def serve(fd:int,adapter:socket.socket,target:int,audit:Path,crash_after:int|Non
    except OSError as e:
             if e.errno in {errno.EINTR,errno.ENOENT}:continue
             return False
-   values=NOTE.unpack(note); n,tid=values[0],values[1]; args=values[6:]; started=time.monotonic_ns(); scope=False; deny=True; reason="FAIL_CLOSED"
+   values=NOTE.unpack(note); n,tid=values[0],values[1]; args=values[6:]; started=time.monotonic_ns(); scope=False; deny=True; reason="FAIL_CLOSED";decision_id=None
    try:
     scope=tgid(tid)==target
     if not scope:deny=False;reason="OUT_OF_SCOPE"
     elif local(adapter,args[1],args[2]):deny=False;reason="LOOPBACK"
-    else:reason="EXTERNAL_EGRESS"
+    else:deny,reason,decision_id=policy.decide(namespace_id);reason=reason if deny else "NO_ACTIVE_GATE3_DENY"
    except (OSError,ValueError):deny=scope;reason="ADAPTER_FAILURE"
-   record={"target_pid":target,"notified_tid":tid,"in_scope":scope,"effect":"DENY" if deny else "ALLOW","reason":reason,"latency_us":(time.monotonic_ns()-started)//1000}
+   record={"target_pid":target,"namespace_id":namespace_id,"notified_tid":tid,"in_scope":scope,"effect":"DENY" if deny else "ALLOW","reason":reason,"latency_us":(time.monotonic_ns()-started)//1000}
+   if decision_id is not None:record["gate3_decision_id"]=decision_id
    with audit.open("a") as out:out.write(json.dumps({**record,"worker_generation":generation},sort_keys=True)+"\n");out.flush();os.fsync(out.fileno())
    answer(fd,n,deny)
    processed+=1
    if crash_after is not None and processed>=crash_after:return True
  finally:os.close(fd)
-def supervise(listener:int,adapter_fd:int,target:int,audit:Path,crash_after:int|None,crash_all:bool)->None:
+def supervise(listener:int,adapter_fd:int,target:int,namespace_id:str,policy:Gate3RuntimePolicy,audit:Path,crash_after:int|None,crash_all:bool)->None:
  adapter=socket.socket(fileno=adapter_fd);generation=1;restarts=0
  try:
   while True:
-   crashed=serve(os.dup(listener),adapter,target,audit,crash_after if generation==1 or crash_all else None,generation)
+   crashed=serve(os.dup(listener),adapter,target,namespace_id,policy,audit,crash_after if generation==1 or crash_all else None,generation)
    if not crashed:break
    restarts+=1
    with audit.open("a") as out:out.write(json.dumps({"type":"worker_restart","from_generation":generation,"restarts":restarts},sort_keys=True)+"\n")
    if restarts>2:break
    generation+=1
  finally:os.close(listener);adapter.close()
-def registration(server:socket.socket,secret:bytes,audit:Path)->None:
+def registration(server:socket.socket,secret:bytes,policy:Gate3RuntimePolicy,audit:Path)->None:
  connection,_=server.accept()
  with connection:
   peer_pid,peer_uid,peer_gid=struct.unpack("3i",connection.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12)); payload,ancillary,*_=connection.recvmsg(8192,socket.CMSG_SPACE(8)); message=json.loads(payload);ok,_reason=authenticate(message,peer_pid,peer_uid,peer_gid,secret,time.monotonic_ns());fds=array.array("i")
-  if ok and os.getpgid(int(message["target_pid"]))!=int(message.get("protected_pgid",-1)):ok=False
+  namespace_id=str(message.get("namespace_id",""))
+  if ok and (os.getpgid(int(message["target_pid"]))!=int(message.get("protected_pgid",-1)) or namespace_id!=process_namespace(int(message["target_pid"]))):ok=False
   for level,kind,data in ancillary:
    if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:fds.frombytes(data[:len(data)-len(data)%fds.itemsize])
   if not ok or len(fds)!=2:
    for descriptor in fds:os.close(descriptor)
    connection.sendall(b"REJECTED");return
-  connection.sendall(b"READY");threading.Thread(target=supervise,args=(fds[0],fds[1],int(message["target_pid"]),audit,message.get("crash_after"),bool(message.get("crash_all"))),daemon=True).start()
+  connection.sendall(b"READY");threading.Thread(target=supervise,args=(fds[0],fds[1],int(message["target_pid"]),namespace_id,policy,audit,message.get("crash_after"),bool(message.get("crash_all"))),daemon=True).start()
 def main()->int:
  parser=argparse.ArgumentParser();parser.add_argument("--config",type=Path,required=True);args=parser.parse_args();config=json.loads(args.config.read_text())
- if config.get("enabled") is not True or config.get("mode")!="laboratory-exact-launch" or config.get("policy_revision")!=REVISION:
+ if config.get("enabled") is not True or config.get("mode")!="laboratory-gate3-service" or config.get("policy_revision")!=REVISION:
   print("unix-agb-egress-guardian: configuration is not enabled or revision-bound",file=sys.stderr);return 78
  secret=Path(config["handoff_key"]).read_bytes().strip()
  if len(secret)<32:return 78
+ try:
+  policy=Gate3RuntimePolicy(Path(config["gate3_cache"]),Path(config["gate3_cache_key"]),str(config["gate3_policy_revision"]));policy.reload(required=True)
+ except (KeyError,Gate3CacheError):
+  print("unix-agb-egress-guardian: authenticated Gate 3 policy unavailable",file=sys.stderr);return 78
  runtime=Path("/run/unix-agb");state=Path("/var/lib/unix-agb");runtime.mkdir(parents=True,exist_ok=True);state.mkdir(parents=True,exist_ok=True);health_path=runtime/"guardian.sock";control_path=runtime/"control.sock"
  for path in (health_path,control_path):
   try:path.unlink()
@@ -97,7 +106,7 @@ def main()->int:
    if health in readable:
     client,_=health.accept()
     with client:client.recv(128);client.sendall(encode(ready)+b"\n")
-   if control in readable:registration(control,secret,audit)
+   if control in readable:registration(control,secret,policy,audit)
  finally:
   health.close();control.close()
   for path in (health_path,control_path):

@@ -322,6 +322,28 @@ closed on missing or unauthenticated evidence and retains
 `gate4_status: controlled-prototype` until every domain passes under one frozen
 revision and artifact. See report 106.
 
+Implementation of the first promotion domain has started under a separately
+frozen protocol. Package 0.3.0 introduces an opt-in Gate 3 service-supervision
+mode: seccomp interception exists before application `exec`, the launcher and
+guardian independently bind the target to the BPF process-namespace identity,
+and each external connect consults the current authenticated Gate 3 cache. A
+bad reload retains the last authenticated snapshot; initial invalid policy
+prevents activation; expiry or an authenticated empty rotation removes the
+restriction. The explicit v1 mapping is trajectory-level external-egress
+containment, not destination-specific enforcement. Unit/package validation is
+not promotion evidence; the long-lived VM transition test remains pending.
+See report 107.
+
+The first Ubuntu 24.04 controlled run of package 0.3.0 demonstrated a live
+empty-cache -> exact-namespace `DENY` -> tampered-cache -> authenticated-empty
+transition. The protected service changed from `ECONNREFUSED` to `EACCES`,
+retained `EACCES` across cache corruption, and returned to `ECONNREFUSED` after
+valid rotation; an unprotected control was unaffected and purge left no
+residue. A restart-readiness race found during negative testing was fixed with
+a bounded fail-closed launcher wait and the full matrix was rerun. This still
+uses controlled cache injection, so the real Gate 3 integration promotion
+domain remains unsupported. See report 108.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;

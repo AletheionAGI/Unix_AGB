@@ -3,13 +3,16 @@ import hashlib
 import hmac
 import importlib.machinery
 import importlib.util
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "deploy"))
 
 
 class EgressGuardianPackagingTests(unittest.TestCase):
@@ -36,13 +39,16 @@ class EgressGuardianPackagingTests(unittest.TestCase):
         self.assertTrue(manifest["installed_by_this_repository"])
         self.assertEqual(manifest["status"], "laboratory-lifecycle-package")
         self.assertTrue(manifest["enforcement_active"])
+        self.assertEqual(manifest["scope"], "opt-in Gate 3 service supervision laboratory only")
 
     def test_package_declares_hardening_and_exact_revision(self):
         unit = (ROOT / "deploy/unix-agb-egress-guardian.service").read_text()
         config = json.loads((ROOT / "deploy/egress-guardian.json.example").read_text())
         for directive in ("NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "ProtectControlGroups=yes"):
             self.assertIn(directive, unit)
-        self.assertEqual(config["policy_revision"], "policy:gate4-egress-guardian-v2")
+        self.assertEqual(config["policy_revision"], "policy:gate4-egress-guardian-v3")
+        self.assertEqual(config["mode"], "laboratory-gate3-service")
+        self.assertEqual(config["gate3_policy_revision"], "policy:gate3-service-v1")
 
     def test_runtime_rejects_disabled_configuration(self):
         runtime = ROOT / "deploy/agb-egress-guardian"
@@ -56,13 +62,13 @@ class EgressGuardianPackagingTests(unittest.TestCase):
             subprocess.run(["python3", str(ROOT / "scripts/build_gate4_deb.py"), "--output-dir", directory], check=True, capture_output=True, text=True)
             package = next(Path(directory).glob("*.deb"))
             listing = subprocess.run(["dpkg-deb", "--contents", str(package)], check=True, capture_output=True, text=True).stdout
-            for path in ("./etc/unix-agb/egress-guardian.json", "./usr/lib/systemd/system/unix-agb-egress-guardian.service", "./usr/libexec/unix-agb/agb-egress-guardian", "./usr/libexec/unix-agb/agb-egress-launch"):
+            for path in ("./etc/unix-agb/egress-guardian.json", "./usr/lib/systemd/system/unix-agb-egress-guardian.service", "./usr/libexec/unix-agb/agb-egress-guardian", "./usr/libexec/unix-agb/agb-egress-launch", "./usr/libexec/unix-agb/agb_gate3_runtime.py"):
                 self.assertIn(path, listing)
 
     def test_handoff_rejects_replay_stale_revision_and_bad_hmac(self):
         guardian = self.guardian_module()
         secret = b"x" * 32
-        base = {"pid": 42, "target_pid": 99, "protected_pgid": 42, "policy_revision": guardian.REVISION, "nonce": "one", "expires_ns": 200, "crash_after": None, "crash_all": False}
+        base = {"pid": 42, "target_pid": 99, "protected_pgid": 42, "namespace_id": "process:test:99:1", "policy_revision": guardian.REVISION, "nonce": "one", "expires_ns": 200, "crash_after": None, "crash_all": False}
         def sign(message):
             return {**message, "hmac_sha256": hmac.new(secret, guardian.encode(message), hashlib.sha256).hexdigest()}
         valid = sign(base)
@@ -72,6 +78,14 @@ class EgressGuardianPackagingTests(unittest.TestCase):
         self.assertEqual(guardian.authenticate(stale, 42, 0, 0, secret, 100)[1], "POLICY_REVISION_MISMATCH")
         bad = {**sign({**base, "nonce": "three"}), "hmac_sha256": "0" * 64}
         self.assertEqual(guardian.authenticate(bad, 42, 0, 0, secret, 100)[1], "HANDOFF_HMAC_INVALID")
+
+    def test_guardian_namespace_matches_bpf_identity_contract(self):
+        guardian = self.guardian_module()
+        namespace = guardian.process_namespace(os.getpid())
+        fields = namespace.split(":")
+        self.assertEqual(fields[0], "process")
+        self.assertEqual(int(fields[2]), os.getpid())
+        self.assertGreater(int(fields[3]), 0)
 
 
 if __name__ == "__main__":

@@ -19,10 +19,14 @@
     {
       "source": "deploy/agb-egress-launch",
       "destination": "/usr/libexec/unix-agb/agb-egress-launch"
+    },
+    {
+      "source": "deploy/agb_gate3_runtime.py",
+      "destination": "/usr/libexec/unix-agb/agb_gate3_runtime.py"
     }
   ],
   "activation_marker": "/etc/unix-agb/egress-guardian.enabled",
   "runtime": "/usr/libexec/unix-agb/agb-egress-guardian",
   "enforcement_active": true,
-  "scope": "opt-in exact-launch laboratory only"
+  "scope": "opt-in Gate 3 service supervision laboratory only"
 }

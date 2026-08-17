@@ -3,7 +3,7 @@
 from __future__ import annotations
 import argparse,array,ctypes,hashlib,hmac,json,os,select,socket,struct,time
 from pathlib import Path
-REVISION="policy:gate4-egress-guardian-v2";LIB=ctypes.CDLL("libseccomp.so.2",use_errno=True);LIBC=ctypes.CDLL(None,use_errno=True);LIB.seccomp_init.argtypes=[ctypes.c_uint32];LIB.seccomp_init.restype=ctypes.c_void_p;LIB.seccomp_rule_add.argtypes=[ctypes.c_void_p,ctypes.c_uint32,ctypes.c_int,ctypes.c_uint];LIB.seccomp_load.argtypes=[ctypes.c_void_p];LIB.seccomp_notify_fd.argtypes=[ctypes.c_void_p];LIB.seccomp_release.argtypes=[ctypes.c_void_p]
+REVISION="policy:gate4-egress-guardian-v3";LIB=ctypes.CDLL("libseccomp.so.2",use_errno=True);LIBC=ctypes.CDLL(None,use_errno=True);LIB.seccomp_init.argtypes=[ctypes.c_uint32];LIB.seccomp_init.restype=ctypes.c_void_p;LIB.seccomp_rule_add.argtypes=[ctypes.c_void_p,ctypes.c_uint32,ctypes.c_int,ctypes.c_uint];LIB.seccomp_load.argtypes=[ctypes.c_void_p];LIB.seccomp_notify_fd.argtypes=[ctypes.c_void_p];LIB.seccomp_release.argtypes=[ctypes.c_void_p]
 def install()->int:
  if LIBC.prctl(38,1,0,0,0)!=0:raise OSError(ctypes.get_errno(),"no_new_privs")
  context=LIB.seccomp_init(0x7fff0000)
@@ -14,6 +14,15 @@ def install()->int:
   return fd
  finally:LIB.seccomp_release(context)
 def encode(v:dict[str,object])->bytes:return json.dumps(v,sort_keys=True,separators=(",",":")).encode()
+def namespace(pid:int)->str:
+ stat=Path(f"/proc/{pid}/stat").read_text().split();ticks=int(stat[21]);hz=os.sysconf("SC_CLK_TCK");boot=Path("/proc/sys/kernel/random/boot_id").read_text().strip();return f"process:{boot}:{pid}:{ticks*1_000_000_000//hz}"
+def connect_control(path:str="/run/unix-agb/control.sock",timeout:float=2.0)->socket.socket:
+ deadline=time.monotonic()+timeout;last_error:OSError|None=None
+ while time.monotonic()<deadline:
+  channel=socket.socket(socket.AF_UNIX,socket.SOCK_SEQPACKET)
+  try:channel.connect(path);return channel
+  except OSError as error:last_error=error;channel.close();time.sleep(.01)
+ raise TimeoutError("guardian control socket not ready") from last_error
 def main()->int:
  parser=argparse.ArgumentParser();parser.add_argument("--config",type=Path,default=Path("/etc/unix-agb/egress-guardian.json"));parser.add_argument("--inject-worker-crash-after",type=int);parser.add_argument("--inject-restart-exhaustion",action="store_true");parser.add_argument("command",nargs=argparse.REMAINDER);args=parser.parse_args()
  if not args.command:parser.error("command required")
@@ -25,7 +34,7 @@ def main()->int:
  child.close();payload,ancillary,*_=parent.recvmsg(4096,socket.CMSG_SPACE(4));target=int(json.loads(payload)["target_pid"]);fds=array.array("i")
  for level,kind,data in ancillary:
   if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:fds.frombytes(data[:fds.itemsize])
- reader,guardian_reader=socket.socketpair(type=socket.SOCK_SEQPACKET);control=socket.socket(socket.AF_UNIX,socket.SOCK_SEQPACKET);control.connect("/run/unix-agb/control.sock");message={"pid":os.getpid(),"target_pid":target,"protected_pgid":pid,"policy_revision":REVISION,"nonce":os.urandom(16).hex(),"expires_ns":time.monotonic_ns()+1_000_000_000,"crash_after":args.inject_worker_crash_after,"crash_all":args.inject_restart_exhaustion};message["hmac_sha256"]=hmac.new(secret,encode(message),hashlib.sha256).hexdigest();control.sendmsg([encode(message)],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array("i",[fds[0],guardian_reader.fileno()]))])
+ reader,guardian_reader=socket.socketpair(type=socket.SOCK_SEQPACKET);control=connect_control();message={"pid":os.getpid(),"target_pid":target,"protected_pgid":pid,"namespace_id":namespace(target),"policy_revision":REVISION,"nonce":os.urandom(16).hex(),"expires_ns":time.monotonic_ns()+1_000_000_000,"crash_after":args.inject_worker_crash_after,"crash_all":args.inject_restart_exhaustion};message["hmac_sha256"]=hmac.new(secret,encode(message),hashlib.sha256).hexdigest();control.sendmsg([encode(message)],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array("i",[fds[0],guardian_reader.fileno()]))])
  if control.recv(32)!=b"READY":raise RuntimeError("guardian rejected handoff")
  os.close(fds[0]);guardian_reader.close();control.close();parent.send(b"GO");result=None
  while result is None:
