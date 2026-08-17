@@ -70,7 +70,9 @@ def filtered_curl(channel: socket.socket, curl: Path, url: str) -> None:
         if curl_pid == 0:
             os.execv(str(curl), [str(curl), "--silent", "--show-error", "--max-time", "4", url])
         _, status = os.waitpid(curl_pid, 0)
-        os._exit(os.waitstatus_to_exitcode(status))
+        exit_code = os.waitstatus_to_exitcode(status)
+        channel.send(json.dumps({"exit_code": exit_code}).encode())
+        os._exit(exit_code)
     except BaseException as error:
         channel.send(json.dumps({"error": str(error)}).encode())
         os._exit(125)
@@ -115,15 +117,23 @@ def supervise(curl: Path, url: str, policy: ExecutableEgressPolicy) -> dict[str,
     stale_notifications = 0
     try:
         while True:
-            exited, status = os.waitpid(pid, os.WNOHANG)
-            if exited:
+            ready, _, _ = select.select([parent, listener], [], [], 0.1)
+            if parent in ready:
+                payload = parent.recv(4096)
+                if not payload:
+                    raise RuntimeError("filtered curl exited without reporting status")
+                status_report = json.loads(payload)
+                _, status = os.waitpid(pid, 0)
+                exit_code = os.waitstatus_to_exitcode(status)
+                if exit_code != status_report.get("exit_code"):
+                    raise RuntimeError("filtered curl status handshake mismatch")
                 return {
                     "url": url,
-                    "exit_code": os.waitstatus_to_exitcode(status),
+                    "exit_code": exit_code,
                     "decisions": decisions,
                     "stale_notifications": stale_notifications,
                 }
-            if not select.select([listener], [], [], 0.1)[0]:
+            if listener not in ready:
                 continue
             notification = bytearray(NOTIFICATION.size)
             try:

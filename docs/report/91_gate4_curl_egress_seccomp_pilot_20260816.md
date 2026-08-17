@@ -21,11 +21,17 @@ was 72 bytes instead of the Linux ABI's 80 bytes. The kernel correctly rejected
 it with `EINVAL`. A regression test now verifies both the structure size and
 all six syscall arguments.
 
-The successful run discarded 79 stale notifications in the loopback process
-and 86 in the external process after `SECCOMP_IOCTL_NOTIF_RECV` returned
-`ENOENT`. They produced no policy decision or enforcement record. This is an
-unacceptable wake-up rate for a persistent broker and must be investigated and
-bounded before promotion beyond the disposable pilot.
+The first successful run discarded 79 stale-listener wakeups in the loopback
+process and 86 in the external process after `SECCOMP_IOCTL_NOTIF_RECV`
+returned `ENOENT`. They produced no policy decision or enforcement record. The
+counter represented repeated readiness while process completion had not yet
+been observed, rather than 165 distinct syscalls.
+
+A follow-up changed the broker to monitor the listener and an explicit child
+status channel together, prioritizing the terminal status handshake. Repeating
+the complete pilot preserved loopback success and external `EACCES` denial while
+reducing stale notifications from 79/86 to 0/0. The current evidence artifact
+contains this corrected run.
 
 Evidence is stored locally at
 `var/benchmark/gate4-curl-egress-pilot.json`. The report records

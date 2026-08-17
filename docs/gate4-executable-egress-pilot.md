@@ -29,7 +29,7 @@ filter when it returns an error action. In that environment the inner listener
 receives no valid notification, so an ordinary connection failure is not
 accepted as AGB enforcement evidence.
 
-The completed disposable pilot also observed repeated stale-listener wakeups
-returning `ENOENT`. They are counted and ignored without creating a decision.
-This behavior is acceptable only as diagnosed pilot telemetry; it must be
-bounded or eliminated before a long-lived broker is considered.
+The broker monitors both the notification listener and an explicit child-status
+channel. Child completion takes priority, preventing a closed process from
+causing repeated stale-listener wakeups. A genuine `ENOENT` race remains
+counted and ignored without creating a decision.
