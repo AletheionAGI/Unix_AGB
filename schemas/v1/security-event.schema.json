@@ -19,11 +19,13 @@
       "required": ["pid", "uid", "gid", "boot_id", "start_time_ns", "exe"],
       "properties": {
         "pid": { "type": "integer", "minimum": 1 },
+        "ppid": { "type": "integer", "minimum": 0 },
         "uid": { "type": "integer", "minimum": 0 },
         "gid": { "type": "integer", "minimum": 0 },
         "boot_id": { "type": "string", "minLength": 1, "maxLength": 128 },
         "start_time_ns": { "type": "integer", "minimum": 1 },
         "exe": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "cmdline": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 4096 } },
         "service": { "type": ["string", "null"], "maxLength": 256 },
         "container_id": { "type": ["string", "null"], "maxLength": 256 },
         "agent_id": { "type": ["string", "null"], "maxLength": 256 }

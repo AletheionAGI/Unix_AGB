@@ -55,6 +55,17 @@ class DecisionEnsembleTests(unittest.TestCase):
         ensemble = DecisionEnsemble(self.engines(["DENY", "DENY", "ALLOW"]), policy=policy)
         self.assertEqual(ensemble.update(self.event())["effect"], "DENY")
 
+    def test_parallel_scheduling_preserves_member_order_and_vote(self):
+        ensemble = DecisionEnsemble(
+            self.engines(["DENY", "DENY", "ALLOW"]),
+            policy=EnsemblePolicy(disagreement_action="majority"),
+            parallel_members=True,
+        )
+        result = ensemble.update(self.event())
+        self.assertEqual(result["effect"], "DENY")
+        self.assertEqual(result["ensemble"]["member_effects"], ["DENY", "DENY", "ALLOW"])
+        self.assertTrue(ensemble.telemetry["parallel_members"])
+
     def test_member_abstention_can_never_become_allow(self):
         policy = EnsemblePolicy(deny_votes_required=2, disagreement_action="majority")
         ensemble = DecisionEnsemble(

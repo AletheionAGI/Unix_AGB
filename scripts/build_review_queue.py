@@ -35,7 +35,7 @@ def main() -> None:
                 continue
             if (
                 isinstance(review, dict)
-                and review.get("label") in {"benign", "malicious"}
+                and review.get("label") in {"benign", "malicious", "inconclusive"}
                 and isinstance(review.get("trajectory_id"), str)
             ):
                 existing_reviews[review["trajectory_id"]] = review

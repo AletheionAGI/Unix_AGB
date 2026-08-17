@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-ALLOWED_LABELS = {"benign", "malicious"}
+ALLOWED_LABELS = {"benign", "malicious", "inconclusive"}
 ALLOWED_CONFIDENCE = {"high", "low"}
 
 
@@ -37,13 +37,13 @@ def load_jsonl(path: Path, *, required: bool = True) -> list[dict[str, Any]]:
 
 def validate_review(review: dict[str, Any], candidate_ids: set[str]) -> dict[str, str]:
     required = {"trajectory_id", "label", "label_source", "family"}
-    allowed = required | {"review_confidence"}
+    allowed = required | {"review_confidence", "review_reason"}
     if not required <= set(review) or not set(review) <= allowed:
-        raise ValueError(f"review fields must be {sorted(required)} with optional review_confidence")
+        raise ValueError(f"review fields must be {sorted(required)} with optional review metadata")
     if review["trajectory_id"] not in candidate_ids:
         raise ValueError("unknown trajectory_id")
     if review["label"] not in ALLOWED_LABELS:
-        raise ValueError("label must be benign or malicious")
+        raise ValueError("label must be benign, malicious, or inconclusive")
     confidence = review.get("review_confidence", "high")
     if confidence not in ALLOWED_CONFIDENCE:
         raise ValueError("review_confidence must be high or low")
@@ -52,6 +52,10 @@ def validate_review(review: dict[str, Any], candidate_ids: set[str]) -> dict[str
             raise ValueError(f"{field} must be a non-empty string")
     validated = {field: review[field].strip() for field in required}
     validated["review_confidence"] = confidence
+    if "review_reason" in review:
+        if not isinstance(review["review_reason"], str) or not review["review_reason"].strip():
+            raise ValueError("review_reason must be a non-empty string")
+        validated["review_reason"] = review["review_reason"].strip()
     return validated
 
 

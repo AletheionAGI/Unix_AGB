@@ -104,6 +104,23 @@ class TelemetryPipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(IndependentCorpusError, "pending review"):
             apply_reviews(candidates, [])
 
+    def test_inconclusive_review_completes_review_but_is_excluded(self) -> None:
+        candidates = build_candidates(
+            [observed("process:boot-a:10:100", 1)], collector_revision="revision:test"
+        )
+        corpus = apply_reviews(
+            candidates,
+            [{
+                "trajectory_id": candidates[0]["trajectory_id"],
+                "label": "inconclusive",
+                "label_source": "human-review:test",
+                "family": "unknown",
+                "review_confidence": "low",
+                "review_reason": "insufficient causal evidence",
+            }],
+        )
+        self.assertEqual(corpus, [])
+
     def test_review_summary_is_bounded_and_traceable(self) -> None:
         namespace = "process:boot-a:10:100"
         candidates = build_candidates(

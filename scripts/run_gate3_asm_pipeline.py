@@ -97,6 +97,11 @@ def main() -> None:
         default="abstain",
         help="abstain is the conservative operational default",
     )
+    parser.add_argument(
+        "--ensemble-parallel-members",
+        action="store_true",
+        help="schedule independent ensemble members concurrently; benchmark before promotion",
+    )
     parser.add_argument("--asm-source-root", type=Path, required=True)
     parser.add_argument("--asm-source-revision", required=True)
     parser.add_argument("--device", default="cuda")
@@ -155,6 +160,7 @@ def main() -> None:
                 deny_votes_required=2,
                 disagreement_action=args.ensemble_disagreement_action,
             ),
+            parallel_members=args.ensemble_parallel_members,
         )
     else:
         engine = AsmCmEngine(

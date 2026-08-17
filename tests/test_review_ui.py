@@ -36,6 +36,19 @@ class ReviewUiTests(unittest.TestCase):
             ids,
         )
         self.assertEqual(low["review_confidence"], "low")
+        excluded = validate_review(
+            {
+                "trajectory_id": "candidate:b",
+                "label": "inconclusive",
+                "label_source": "human-review:test",
+                "family": "unknown",
+                "review_confidence": "low",
+                "review_reason": "requested-only network events",
+            },
+            ids,
+        )
+        self.assertEqual(excluded["label"], "inconclusive")
+        self.assertEqual(excluded["review_reason"], "requested-only network events")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "reviews.jsonl"
             write_reviews(path, ["candidate:b", "candidate:a"], {"candidate:a": first})

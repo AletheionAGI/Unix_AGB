@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import socket
@@ -11,6 +12,42 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+
+
+def parse_bpf_line(line: str) -> tuple[str, dict[str, str]] | None:
+    fields = line.rstrip("\n").split("|")
+    if len(fields) < 3 or fields[0] != "AGB_BPF":
+        return None
+    return fields[1], dict(item.split("=", 1) for item in fields[2:] if "=" in item)
+
+
+class CorrelatingNormalizer:
+    """Join syscall entry metadata to its exit before emitting evidence."""
+
+    def __init__(self) -> None:
+        self.pending: dict[tuple[str, str], dict[str, str]] = {}
+
+    def normalize(self, line: str, sequences: dict[str, int], **kwargs: Any) -> dict[str, object] | None:
+        parsed = parse_bpf_line(line)
+        if parsed is None:
+            return None
+        operation, attributes = parsed
+        if operation.endswith(".enter"):
+            base = operation.removesuffix(".enter")
+            self.pending[(attributes["tid"], base)] = attributes
+            return None
+        if operation.endswith(".exit"):
+            base = operation.removesuffix(".exit")
+            entered = self.pending.pop((attributes["tid"], base), None)
+            if entered is None:
+                return None
+            merged = {**entered, **attributes}
+            encoded = "|".join(
+                ["AGB_BPF", base, *(f"{key}={value}" for key, value in merged.items())]
+            )
+            return normalize(encoded, sequences, **kwargs)
+        return normalize(line, sequences, **kwargs)
 
 
 def subject_for(
@@ -33,13 +70,23 @@ def subject_for(
         executable = os.readlink(f"/proc/{pid}/exe")
     except OSError:
         executable = fallback_exe or "<unavailable>"
+    try:
+        cmdline = [
+            part.decode(errors="replace")
+            for part in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+            if part
+        ]
+    except OSError:
+        cmdline = []
     return {
         "pid": pid,
+        "ppid": int(stat[3]),
         "uid": uid if uid is not None else int(status_fields["Uid"]),
         "gid": gid if gid is not None else int(status_fields["Gid"]),
         "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
         "start_time_ns": ticks * 1_000_000_000 // hz,
         "exe": executable,
+        "cmdline": cmdline,
     }
 
 
@@ -50,11 +97,10 @@ def normalize(
     sensitive_paths: set[str] | None = None,
     path_labels: dict[str, set[str]] | None = None,
 ) -> dict[str, object] | None:
-    fields = line.rstrip("\n").split("|")
-    if len(fields) < 3 or fields[0] != "AGB_BPF":
+    parsed = parse_bpf_line(line)
+    if parsed is None:
         return None
-    operation = fields[1]
-    attributes = dict(item.split("=", 1) for item in fields[2:] if "=" in item)
+    operation, attributes = parsed
     pid = int(attributes["pid"])
     subject = subject_for(
         pid,
@@ -113,6 +159,19 @@ def normalize(
         labels = ["network-destination-observed"] if family else []
     else:
         raise ValueError(f"unsupported BPF operation: {operation}")
+    result = "requested"
+    if "ret" in attributes:
+        return_value = int(attributes["ret"])
+        resource["return_value"] = return_value
+        if return_value >= 0:
+            result = "allowed"
+        else:
+            error_number = -return_value
+            resource["error_number"] = error_number
+            resource["error_name"] = errno.errorcode.get(error_number, "UNKNOWN")
+            result = "denied" if error_number in {errno.EACCES, errno.EPERM} else "failed"
+    if "syscall" in attributes:
+        resource["syscall"] = attributes["syscall"]
     return {
         "schema_version": "1.0",
         "event_id": f"evt:bpf:{pid}:{sequence}:{time.monotonic_ns()}",
@@ -124,8 +183,12 @@ def normalize(
         "subject": subject,
         "operation": operation,
         "resource": resource,
-        "result": "requested",
-        "policy_revision": "policy:bpf-observer-v1",
+        "result": result,
+        "policy_revision": (
+            "policy:bpf-observer-v2"
+            if "ret" in attributes or attributes.get("observer") == "v2"
+            else "policy:bpf-observer-v1"
+        ),
         "labels": labels,
         "provenance": {"source": "bpf", "raw": line.rstrip("\n")},
     }

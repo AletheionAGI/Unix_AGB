@@ -14,9 +14,16 @@ def main() -> None:
     parser.add_argument("--reviews", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    corpus = apply_reviews(read_jsonl(args.candidates), read_jsonl(args.reviews))
+    candidates = read_jsonl(args.candidates)
+    reviews = read_jsonl(args.reviews)
+    corpus = apply_reviews(candidates, reviews)
     write_jsonl(args.output, corpus)
-    print(json.dumps({"trajectories": len(corpus), "output": str(args.output)}))
+    print(json.dumps({
+        "candidates": len(candidates),
+        "trajectories": len(corpus),
+        "excluded_inconclusive": len(candidates) - len(corpus),
+        "output": str(args.output),
+    }))
 
 
 if __name__ == "__main__":

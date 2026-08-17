@@ -2,21 +2,30 @@
 // normalized by the Event Gateway. It observes; it never blocks a syscall.
 // Requires: bpftrace, tracefs, and the privileges required by the host.
 
-tracepoint:syscalls:sys_enter_execve
+tracepoint:sched:sched_process_exec
     /($1 == 4294967295 || uid == $1) && pid != $2/
 {
-  printf("AGB_BPF|process.exec|pid=%d|uid=%d|gid=%d|comm=%s|exe=%s\n", pid, uid, gid, comm, str(args->filename));
+  printf("AGB_BPF|process.exec|pid=%d|uid=%d|gid=%d|comm=%s|exe=%s|ret=0|syscall=execve|observer=v2\n", pid, uid, gid, comm, str(args->filename));
 }
 
 tracepoint:syscalls:sys_enter_openat
     /($1 == 4294967295 || uid == $1) && pid != $2/
 {
-  printf("AGB_BPF|file.open|pid=%d|uid=%d|gid=%d|comm=%s|path=%s|flags=%d\n", pid, uid, gid, comm, str(args->filename), args->flags);
+  @pending_open[tid] = 1;
+  printf("AGB_BPF|file.open.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|path=%s|flags=%d|syscall=openat\n", tid, pid, uid, gid, comm, str(args->filename), args->flags);
+}
+
+tracepoint:syscalls:sys_exit_openat
+    /@pending_open[tid]/
+{
+  printf("AGB_BPF|file.open.exit|tid=%d|pid=%d|uid=%d|gid=%d|ret=%d\n", tid, pid, uid, gid, args->ret);
+  delete(@pending_open[tid]);
 }
 
 tracepoint:syscalls:sys_enter_connect
     /($1 == 4294967295 || uid == $1) && pid != $2/
 {
+  @pending_connect[tid] = 1;
   $sa = (struct sockaddr *)uptr(args->uservaddr);
   $family = $sa->sa_family;
   $fd = (int64)args->fd;
@@ -24,20 +33,27 @@ tracepoint:syscalls:sys_enter_connect
   $protocol = @socket_protocol[pid, $fd];
   if ($family == 2) {
     $sin = (struct sockaddr_in *)$sa;
-    printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, $fd, ntop(2, $sin->sin_addr.s_addr), bswap($sin->sin_port), $type, $protocol, args->addrlen);
+    printf("AGB_BPF|network.connect.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=connect\n",
+      tid, pid, uid, gid, comm, $fd, ntop(2, $sin->sin_addr.s_addr), bswap($sin->sin_port), $type, $protocol, args->addrlen);
   } else if ($family == 10) {
     $sin6 = (struct sockaddr_in6 *)$sa;
-    printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET6|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, $fd, ntop(10, $sin6->sin6_addr.in6_u.u6_addr8), bswap($sin6->sin6_port), $type, $protocol, args->addrlen);
+    printf("AGB_BPF|network.connect.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_INET6|address=%s|port=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=connect\n",
+      tid, pid, uid, gid, comm, $fd, ntop(10, $sin6->sin6_addr.in6_u.u6_addr8), bswap($sin6->sin6_port), $type, $protocol, args->addrlen);
   } else if ($family == 1) {
     $sun = (struct sockaddr_un *)$sa;
-    printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_UNIX|unix_path=%s|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, $fd, str($sun->sun_path), $type, $protocol, args->addrlen);
+    printf("AGB_BPF|network.connect.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=AF_UNIX|unix_path=%s|socket_type=%d|protocol=%d|addrlen=%d|syscall=connect\n",
+      tid, pid, uid, gid, comm, $fd, str($sun->sun_path), $type, $protocol, args->addrlen);
   } else {
-    printf("AGB_BPF|network.connect|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|addrlen=%d\n",
-      pid, uid, gid, comm, $fd, $family, $type, $protocol, args->addrlen);
+    printf("AGB_BPF|network.connect.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=connect\n",
+      tid, pid, uid, gid, comm, $fd, $family, $type, $protocol, args->addrlen);
   }
+}
+
+tracepoint:syscalls:sys_exit_connect
+    /@pending_connect[tid]/
+{
+  printf("AGB_BPF|network.connect.exit|tid=%d|pid=%d|uid=%d|gid=%d|ret=%d\n", tid, pid, uid, gid, args->ret);
+  delete(@pending_connect[tid]);
 }
 
 tracepoint:syscalls:sys_enter_socket

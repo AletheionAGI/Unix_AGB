@@ -222,7 +222,8 @@ def apply_reviews(
             raise IndependentCorpusError(f"candidate {index}: collector revision is required")
 
     review_fields = {"trajectory_id", "label", "label_source", "family"}
-    optional_review_fields = {"review_confidence"}
+    review_labels = ALLOWED_LABELS | {"inconclusive"}
+    optional_review_fields = {"review_confidence", "review_reason"}
     by_id: dict[str, dict[str, Any]] = {}
     for index, review in enumerate(reviews, 1):
         if not review_fields <= set(review) or not set(review) <= review_fields | optional_review_fields:
@@ -232,12 +233,14 @@ def apply_reviews(
         trajectory_id = review["trajectory_id"]
         if trajectory_id in by_id:
             raise IndependentCorpusError(f"duplicate review: {trajectory_id}")
-        if review["label"] not in ALLOWED_LABELS:
+        if review["label"] not in review_labels:
             raise IndependentCorpusError(f"review {index}: invalid label")
         if review.get("review_confidence", "high") not in {"high", "low"}:
             raise IndependentCorpusError(f"review {index}: invalid review confidence")
         if not str(review["label_source"]).strip() or not str(review["family"]).strip():
             raise IndependentCorpusError(f"review {index}: label_source and family are required")
+        if "review_reason" in review and not str(review["review_reason"]).strip():
+            raise IndependentCorpusError(f"review {index}: review_reason must be non-empty")
         by_id[trajectory_id] = review
 
     candidate_ids = {item["trajectory_id"] for item in candidates}
@@ -266,4 +269,5 @@ def apply_reviews(
             "events": candidate["events"],
         }
         for candidate in candidates
+        if by_id[candidate["trajectory_id"]]["label"] in ALLOWED_LABELS
     ]

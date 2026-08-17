@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Iterable, Protocol
 
@@ -35,7 +36,11 @@ class DecisionEnsemble:
     name = "D:asm-cm-ensemble"
 
     def __init__(
-        self, engines: Iterable[DecisionEngine], *, policy: EnsemblePolicy | None = None
+        self,
+        engines: Iterable[DecisionEngine],
+        *,
+        policy: EnsemblePolicy | None = None,
+        parallel_members: bool = False,
     ) -> None:
         self.engines = tuple(engines)
         self.policy = policy or EnsemblePolicy()
@@ -50,6 +55,12 @@ class DecisionEnsemble:
         self._disagreements = 0
         self._effects: Counter[str] = Counter()
         self._member_inferences: Counter[str] = Counter()
+        self.parallel_members = parallel_members
+        self._executor = (
+            ThreadPoolExecutor(max_workers=len(self.engines), thread_name_prefix="agb-ensemble")
+            if parallel_members
+            else None
+        )
 
     @property
     def telemetry(self) -> dict[str, Any]:
@@ -67,6 +78,7 @@ class DecisionEnsemble:
                 "deny_votes_required": self.policy.deny_votes_required,
                 "disagreement_action": self.policy.disagreement_action,
             },
+            "parallel_members": self.parallel_members,
         }
 
     def synchronize(self) -> None:
@@ -86,7 +98,11 @@ class DecisionEnsemble:
         return memory() if memory else None
 
     def update(self, event: dict[str, Any]) -> dict[str, Any]:
-        results = [engine.update(event) for engine in self.engines]
+        if self._executor:
+            futures = [self._executor.submit(engine.update, event) for engine in self.engines]
+            results = [future.result() for future in futures]
+        else:
+            results = [engine.update(event) for engine in self.engines]
         for engine, result in zip(self.engines, results):
             self._member_inferences[engine.name] += int(
                 bool(result.get("model_inference_performed"))

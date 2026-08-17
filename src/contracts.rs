@@ -8,11 +8,15 @@ pub const SCHEMA_VERSION: &str = "1.0";
 #[serde(deny_unknown_fields)]
 pub struct Subject {
     pub pid: u32,
+    #[serde(default)]
+    pub ppid: Option<u32>,
     pub uid: u32,
     pub gid: u32,
     pub boot_id: String,
     pub start_time_ns: u64,
     pub exe: String,
+    #[serde(default)]
+    pub cmdline: Option<Vec<String>>,
     #[serde(default)]
     pub service: Option<String>,
     #[serde(default)]
@@ -86,6 +90,9 @@ impl SecurityEvent {
             || self.subject.boot_id.is_empty()
             || self.subject.boot_id.len() > 128
             || self.subject.exe.len() > 4096
+            || self.subject.cmdline.as_ref().is_some_and(|values| {
+                values.len() > 256 || values.iter().any(|value| value.len() > 4096)
+            })
             || self.subject.service.as_ref().is_some_and(|v| v.len() > 256)
             || self
                 .subject
@@ -294,11 +301,13 @@ pub fn sample_event(event_id: &str, sequence: u64, pid: u32, start: u64) -> Secu
         namespace_id: format!("process:boot-test:{pid}:{start}"),
         subject: Subject {
             pid,
+            ppid: None,
             uid: 1000,
             gid: 1000,
             boot_id: "boot-test".into(),
             start_time_ns: start,
             exe: "/usr/bin/test".into(),
+            cmdline: None,
             service: None,
             container_id: None,
             agent_id: None,

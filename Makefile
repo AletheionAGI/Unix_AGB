@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble capture-gate3-natural-validation prepare-gate3-natural-review review-gate3-natural-validation export-gate3-natural-validation gate3-novel-controlled-lab freeze-gate3-validation evaluate-gate3-validation plot-gate3-validation gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server audit-reviews-conservatively export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble capture-gate3-natural-validation prepare-gate3-natural-review review-gate3-natural-validation audit-gate3-natural-reviews export-gate3-natural-validation gate3-novel-controlled-lab freeze-gate3-validation evaluate-gate3-validation plot-gate3-validation gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -190,6 +190,12 @@ review-server:
 		--reviews "$${AGB_REVIEWS:-var/telemetry/trajectory-reviews.jsonl}" \
 		--port "$${AGB_REVIEW_PORT:-8765}"
 
+audit-reviews-conservatively:
+	PYTHONPATH=python:scripts python3 scripts/audit_reviews_conservatively.py \
+		--candidates "$${AGB_CANDIDATES:-var/telemetry/trajectory-candidates.jsonl}" \
+		--reviews "$${AGB_REVIEWS:-var/telemetry/trajectory-reviews.jsonl}" \
+		--output "$${AGB_AUDITED_REVIEWS:-var/telemetry/trajectory-reviews-conservative.jsonl}"
+
 export-reviewed-corpus:
 	PYTHONPATH=python:scripts python3 scripts/export_reviewed_corpus.py \
 		--candidates "$${AGB_CANDIDATES:-var/telemetry/trajectory-candidates.jsonl}" \
@@ -249,6 +255,7 @@ benchmark-gate3-asm-ensemble-pipeline:
 		--ensemble-checkpoint "seed-2:$${ASM_CM_SEED2_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_2/candidate/checkpoint_final.pt}:$${ASM_CM_SEED2_SHA256:-a1a67b4e066b0cabba00d0f17d27c77d29ac2d0ad3dfabc8baf61ff51dba9342}" \
 		--ensemble-checkpoint "seed-3:$${ASM_CM_SEED3_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_3/candidate/checkpoint_final.pt}:$${ASM_CM_SEED3_SHA256:-698979a684a02c4191e3a5ed09256df86d3e81939de988e0809e5433cbc90f4b}" \
 		--ensemble-disagreement-action "$${AGB_ENSEMBLE_DISAGREEMENT_ACTION:-abstain}" \
+		$${AGB_ENSEMBLE_PARALLEL_MEMBERS:+--ensemble-parallel-members} \
 		--asm-source-root "$${ASM_SOURCE_ROOT:-../gitlab/ASM/src}" \
 		--asm-source-revision "$${ASM_SOURCE_REVISION:-4c8eddf2f07d9aec800769323d7e1effbd64815a}" \
 		--device "$${ASM_DEVICE:-cuda}" \
@@ -270,6 +277,7 @@ capture-gate3-natural-validation:
 		--duration "$${AGB_GATE3_NATURAL_DURATION:-120}" \
 		--bpftrace-command "$${AGB_BPFTRACE_COMMAND:-sudo bpftrace}" \
 		--target-uid "$${AGB_CAPTURE_UID:--1}" \
+		$${AGB_GATE3_NATURAL_SENSITIVE_PATH:+--sensitive-path "$${AGB_GATE3_NATURAL_SENSITIVE_PATH}"} \
 		--output-events "$${AGB_GATE3_NATURAL_EVENTS:-var/telemetry/gate3-natural-validation/events.jsonl}"
 
 prepare-gate3-natural-review:
@@ -277,7 +285,8 @@ prepare-gate3-natural-review:
 		--input "$${AGB_GATE3_NATURAL_EVENTS:-var/telemetry/gate3-natural-validation/events.jsonl}" \
 		--output "$${AGB_GATE3_NATURAL_CANDIDATES:-var/telemetry/gate3-natural-validation/candidates.jsonl}" \
 		--collector-revision "$${AGB_COLLECTOR_REVISION:-$$(python3 scripts/fingerprint_collector.py)}" \
-		--coverage-scope system-wide
+		--coverage-scope "$${AGB_GATE3_NATURAL_COVERAGE_SCOPE:-system-wide}" \
+		--protected-executables "$${AGB_GATE3_NATURAL_PROTECTED_EXECUTABLES:-}"
 	PYTHONPATH=python:scripts python3 scripts/build_review_queue.py \
 		--input "$${AGB_GATE3_NATURAL_CANDIDATES:-var/telemetry/gate3-natural-validation/candidates.jsonl}" \
 		--output "$${AGB_GATE3_NATURAL_QUEUE:-var/telemetry/gate3-natural-validation/review-queue.jsonl}" \
@@ -291,6 +300,12 @@ review-gate3-natural-validation:
 		--queue "$${AGB_GATE3_NATURAL_QUEUE:-var/telemetry/gate3-natural-validation/review-queue.jsonl}" \
 		--reviews "$${AGB_GATE3_NATURAL_REVIEWS:-var/telemetry/gate3-natural-validation/reviews.jsonl}" \
 		--port "$${AGB_REVIEW_PORT:-8765}"
+
+audit-gate3-natural-reviews:
+	PYTHONPATH=python:scripts python3 scripts/audit_reviews_conservatively.py \
+		--candidates "$${AGB_GATE3_NATURAL_CANDIDATES:-var/telemetry/gate3-natural-validation/candidates.jsonl}" \
+		--reviews "$${AGB_GATE3_NATURAL_REVIEWS:-var/telemetry/gate3-natural-validation/reviews.jsonl}" \
+		--output "$${AGB_GATE3_NATURAL_AUDITED_REVIEWS:-var/telemetry/gate3-natural-validation/reviews-conservative.jsonl}"
 
 export-gate3-natural-validation:
 	PYTHONPATH=python:scripts python3 scripts/export_reviewed_corpus.py \

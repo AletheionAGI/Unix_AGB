@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from bpf_to_events import normalize
+from bpf_to_events import CorrelatingNormalizer
 
 
 def main() -> None:
@@ -69,6 +69,7 @@ def main() -> None:
         output_file = partial_path.open("w")
     count = 0
     sequences: dict[str, int] = {}
+    normalizer = CorrelatingNormalizer()
     assert process.stdout
     assert process.stderr
     selector = selectors.DefaultSelector()
@@ -98,7 +99,7 @@ def main() -> None:
                 print(line, end="", file=sys.stderr)
                 continue
             try:
-                event = normalize(
+                event = normalizer.normalize(
                     line,
                     sequences,
                     sensitive_paths=set(args.sensitive_path),

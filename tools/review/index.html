@@ -20,7 +20,7 @@
     label { display:block; margin-top:16px; color:#aebbd0 } input { width:100%; padding:10px; border-radius:8px; border:1px solid #354762; background:#080d15; color:#fff }
     .actions,.nav { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px }
     button { border:0; border-radius:9px; padding:11px 16px; cursor:pointer; background:#26354b; color:#fff }
-    button:hover { filter:brightness(1.18) } .benign { background:#157451 } .low-confidence { background:#80651d } .malicious { background:#a93847 }
+    button:hover { filter:brightness(1.18) } .benign { background:#157451 } .low-confidence { background:#80651d } .malicious { background:#a93847 } .inconclusive { background:#5d6572 }
     .export { background:#315ca8 } .danger { color:#ff9ba8 } #notice { min-height:24px; margin:10px 0 }
     @media (max-width:600px) { progress { width:100% } header { padding:14px } main { padding:0 12px 60px } }
   </style>
@@ -47,6 +47,7 @@
       <button class="benign" id="benign">✓ Benigno · OK</button>
       <button class="low-confidence" id="benign-low">? Benigno · baixa confiança</button>
       <button class="malicious" id="malicious">⚠ Malicioso · OK</button>
+      <button class="inconclusive" id="inconclusive">⊘ Inconclusivo · excluir</button>
       <button id="clear">Limpar rótulo</button>
     </div>
     <div class="nav"><button id="prev">← Anterior</button><button id="next">Próximo →</button><button class="export" id="export">Baixar JSONL revisado</button></div>
@@ -78,7 +79,7 @@ function render(){
   $("resources").textContent=(item.resource_samples||[]).join("\n")||"(sem amostras)";
   $("terminal").textContent=JSON.stringify(item.terminal,null,2);
   $("family").value=review?.family||familyDefault(item); $("source").value=review?.label_source||"human-review:local-ui";
-  $("notice").textContent=review?`Revisado como ${review.label}${review.review_confidence==="low"?" · baixa confiança":""}.`:"Pendente de revisão.";
+  $("notice").textContent=review?(review.label==="inconclusive"?"Excluído do corpus: evidência inconclusiva.":`Revisado como ${review.label}${review.review_confidence==="low"?" · baixa confiança":""}.`):"Pendente de revisão.";
   $("notice").className=review?.label==="malicious"?"danger":"";
 }
 async function classify(label,reviewConfidence="high"){
@@ -99,6 +100,7 @@ async function classify(label,reviewConfidence="high"){
 $("benign").onclick=()=>classify("benign","high");
 $("benign-low").onclick=()=>classify("benign","low");
 $("malicious").onclick=()=>classify("malicious","high");
+$("inconclusive").onclick=()=>classify("inconclusive","low");
 $("clear").onclick=()=>{delete reviews[DATA.items[index].trajectory_id];save();render()};
 $("prev").onclick=()=>move(-1); $("next").onclick=()=>move(1);
 $("purpose").onchange=()=>{const visible=visibleIndexes();if(visible.length)index=visible[0];render()};

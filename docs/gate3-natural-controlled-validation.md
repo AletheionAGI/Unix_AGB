@@ -60,6 +60,44 @@ make review-gate3-natural-validation
 make export-gate3-natural-validation
 ```
 
+The v2 observer now joins syscall entry and exit before emitting `file.open`
+and `network.connect`. A request alone is not evidence of a successful access:
+the event carries the kernel return value and is classified as `allowed`,
+`denied`, or `failed`. Process identity also includes parent PID and command
+line. Old v1 captures remain valid historical artifacts, but their
+`result=requested` events are not upgraded or reinterpreted.
+
+To build a natural benign set that actually reaches a protected query, declare
+both the exact ordinary executable and an intentionally accessed protected
+path before capture. Use a harmless dedicated file; do not point the experiment
+at real credentials.
+
+```sh
+mkdir -p "$PWD/var/telemetry/gate3-natural-protected"
+printf 'harmless validation marker\n' > \
+  "$PWD/var/telemetry/gate3-natural-protected/benign-canary.txt"
+export AGB_GATE3_NATURAL_SENSITIVE_PATH="$PWD/var/telemetry/gate3-natural-protected/benign-canary.txt"
+export AGB_GATE3_NATURAL_PROTECTED_EXECUTABLES=/usr/bin/cat
+export AGB_GATE3_NATURAL_COVERAGE_SCOPE=allowlist
+make capture-gate3-natural-validation
+# In another terminal during capture, exercise the declared benign workload:
+/usr/bin/cat "$AGB_GATE3_NATURAL_SENSITIVE_PATH" >/dev/null
+make prepare-gate3-natural-review
+make review-gate3-natural-validation
+make audit-gate3-natural-reviews
+```
+
+The reviewer supports `inconclusive`, which completes the review while
+excluding that trajectory from the binary corpus. The conservative auditor
+never promotes natural evidence to malicious: low-confidence labels,
+requested-only syscalls, wildcard destinations, missing identities, and
+truncated windows are excluded. Export from the audited review file explicitly:
+
+```sh
+AGB_GATE3_NATURAL_REVIEWS="$AGB_GATE3_NATURAL_AUDITED_REVIEWS" \
+  make export-gate3-natural-validation
+```
+
 Capture the new controlled compositions:
 
 ```sh
