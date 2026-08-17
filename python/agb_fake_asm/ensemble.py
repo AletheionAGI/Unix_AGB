@@ -69,6 +69,22 @@ class DecisionEnsemble:
             },
         }
 
+    def synchronize(self) -> None:
+        for engine in self.engines:
+            synchronize = getattr(engine, "synchronize", None)
+            if synchronize:
+                synchronize()
+
+    def reset_peak_memory_stats(self) -> None:
+        # CUDA peak accounting is process/device global; one reset is sufficient.
+        reset = getattr(self.engines[0], "reset_peak_memory_stats", None)
+        if reset:
+            reset()
+
+    def accelerator_memory(self) -> dict[str, int] | None:
+        memory = getattr(self.engines[0], "accelerator_memory", None)
+        return memory() if memory else None
+
     def update(self, event: dict[str, Any]) -> dict[str, Any]:
         results = [engine.update(event) for engine in self.engines]
         for engine, result in zip(self.engines, results):

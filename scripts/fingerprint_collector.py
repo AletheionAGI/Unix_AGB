@@ -18,6 +18,7 @@ def main() -> None:
         "scripts/run_protected_corpus_lab.py",
         "scripts/fingerprint_collector.py",
         "python/agb_fake_asm/telemetry_pipeline.py",
+        "src/bin/agb-lab-workload.rs",
     ]
     digest = hashlib.sha256()
     for relative in sources:

@@ -125,6 +125,13 @@ FP/FN/ABSTAIN, and measured 54.37 ms p95 end-to-end latency. This remains
 controlled-laboratory evidence with enforcement disabled. See
 `docs/asm-cm-operational-ensemble.md` and report 88.
 
+A separate natural/novel-controlled validation is now preregistered but not yet
+executed. Its freezer rejects the previously observed corpora and protected
+family names, requires independently reviewed natural benign telemetry plus new
+BPF-captured delayed controlled compositions, and freezes all criteria before
+GPU evaluation. See `docs/gate3-natural-controlled-validation.md`. Until a new
+freeze and final report exist, this is protocol/tooling only, not evidence.
+
 The repository now contains a deterministic `StateEngine` seam, a Python
 stateful proxy, and a real promoted-checkpoint ASM-CM adapter behind the
 Unix-socket boundary. Both have checksummed snapshots and participate in the

@@ -232,6 +232,7 @@ def evaluate(engine_factory: Any, trajectories: list[dict[str, Any]]) -> dict[st
     total = decided + total_counts["abstain"]
     return {
         "engine": engine.name,
+        "engine_telemetry": getattr(engine, "telemetry", None),
         "confusion": total_counts,
         "decision_coverage": {
             "trajectory_count": total,

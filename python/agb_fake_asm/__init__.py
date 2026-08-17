@@ -18,6 +18,7 @@ from .canonicalization import (
     canonicalize_trajectory,
 )
 from .ensemble import DecisionEnsemble, EnsemblePolicy
+from .validation_protocol import ValidationProtocolError, freeze_validation_bundle
 
 __all__ = [
     "BenchmarkEngine",
@@ -39,4 +40,6 @@ __all__ = [
     "load_independent_corpus",
     "canonicalize_trajectories",
     "canonicalize_trajectory",
+    "ValidationProtocolError",
+    "freeze_validation_bundle",
 ]

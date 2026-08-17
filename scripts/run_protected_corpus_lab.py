@@ -21,6 +21,7 @@ from agb_fake_asm.telemetry_pipeline import (
 )
 
 FAMILIES = ("credential-egress", "persistence-origin", "admin-origin")
+NOVEL_VALIDATION_FAMILIES = tuple(f"{family}-delayed" for family in FAMILIES)
 
 
 def listener(expected: int) -> tuple[socket.socket, int, threading.Thread, list[Exception]]:
@@ -80,6 +81,9 @@ def main() -> None:
     parser.add_argument("--duration", type=int, default=25)
     parser.add_argument("--cases-per-class", type=int, default=30)
     parser.add_argument("--output-root", type=Path, default=Path("var/telemetry/protected-lab"))
+    parser.add_argument(
+        "--profile", choices=("original", "novel-validation"), default="original"
+    )
     args = parser.parse_args()
     if args.duration < 8:
         parser.error("--duration must be at least 8 seconds")
@@ -142,7 +146,8 @@ def main() -> None:
         time.sleep(2)
         if observer.poll() is not None:
             raise RuntimeError("BPF observer failed during startup validation")
-        for family in FAMILIES:
+        families = FAMILIES if args.profile == "original" else NOVEL_VALIDATION_FAMILIES
+        for family in families:
             for index in range(args.cases_per_class * 2):
                 case = "benign" if index % 2 == 0 else "suspicious"
                 process = subprocess.Popen(
@@ -238,16 +243,17 @@ def main() -> None:
         case, family = ground_truth[pid]
         operations = [event["operation"] for event in candidate["events"]]
         labels = {label for event in candidate["events"] for label in event.get("labels", [])}
+        base_family = family.removesuffix("-delayed")
         expected_query = {
             "credential-egress": "credential",
             "persistence-origin": "persistence-control",
             "admin-origin": "admin-control",
-        }[family]
+        }[base_family]
         expected_trigger = {
             "credential-egress": "network.connect",
             "persistence-origin": "persistence-origin",
             "admin-origin": "admin-origin",
-        }[family]
+        }[base_family]
         trigger_observed = (
             expected_trigger in operations
             if expected_trigger == "network.connect"
@@ -259,7 +265,11 @@ def main() -> None:
             {
                 "trajectory_id": candidate["trajectory_id"],
                 "label": "malicious" if case == "suspicious" else "benign",
-                "label_source": "controlled-lab:causal-families-v2",
+                "label_source": (
+                    "controlled-lab:novel-delayed-compositions-v1"
+                    if args.profile == "novel-validation"
+                    else "controlled-lab:causal-families-v2"
+                ),
                 "family": f"protected-{family}",
                 "review_confidence": "high",
             }

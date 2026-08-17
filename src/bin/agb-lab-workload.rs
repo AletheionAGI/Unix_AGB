@@ -90,7 +90,9 @@ fn run() -> Result<(), String> {
     if case != "benign" && case != "suspicious" {
         return Err("--case must be benign or suspicious".into());
     }
-    match (family.as_str(), case.as_str()) {
+    let delayed = family.ends_with("-delayed");
+    let base_family = family.strip_suffix("-delayed").unwrap_or(&family);
+    match (base_family, case.as_str()) {
         ("credential-egress", "benign") => {
             File::open(&config).map_err(|error| format!("open config: {error}"))?;
         }
@@ -111,6 +113,11 @@ fn run() -> Result<(), String> {
         }
         _ => return Err("unsupported --family".into()),
     }
+    if delayed {
+        for _ in 0..4 {
+            File::open(&config).map_err(|error| format!("open distractor config: {error}"))?;
+        }
+    }
 
     println!(
         "{}",
@@ -130,7 +137,7 @@ fn run() -> Result<(), String> {
         return Err(format!("unsupported decision: {effect}"));
     }
 
-    let terminal_result = match family.as_str() {
+    let terminal_result = match base_family {
         "credential-egress" => File::open(&secret).map(|_| ()),
         "persistence-origin" => OpenOptions::new()
             .write(true)

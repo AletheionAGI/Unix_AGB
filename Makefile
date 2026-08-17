@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
+.PHONY: test test-python test-rust generate benchmark benchmark-gate2 benchmark-gate2-asm-cm benchmark-gate2-multiseed benchmark-gate2-multiseed-independent gate2b-neutral-corpus benchmark-gate2b-baselines train-gate2b-asm evaluate-gate2b-final diagnose-gate2b-v2 diagnose-gate2b-v2-relational diagnose-gate2b-v3-binding train-gate2b-v4 capture-independent-events build-independent-candidates build-review-queue build-review-html review-server export-reviewed-corpus freeze-independent-corpus protected-corpus-lab gate3-dry-run benchmark-gate3-cache benchmark-gate3-asm-pipeline benchmark-gate3-asm-ensemble-pipeline plot-gate3-asm-ensemble capture-gate3-natural-validation prepare-gate3-natural-review review-gate3-natural-validation export-gate3-natural-validation gate3-novel-controlled-lab freeze-gate3-validation evaluate-gate3-validation gate4-reversible-denial causal-proof live-proof linux-capabilities seccomp-proof bpf-pipeline policy-broker supervise-broker broker-health broker-restart cache-list admin-server identity-probe admin-userns uid-gid-matrix dedicated-accounts privileged-identity uid-gid-combinations uid-gid-variants fail-closed-config admin-rate-limit admin-operator-spoofing live-bpf-observer
 
 test: test-python test-rust
 
@@ -264,6 +264,67 @@ plot-gate3-asm-ensemble:
 	"$${ASM_PYTHON:-.venv/bin/python}" scripts/plot_gate3_asm_ensemble.py \
 		--report "$${AGB_GATE3_BENCHMARK_OUTPUT:-var/benchmark/gate3-asm-ensemble-pipeline.json}" \
 		--output-prefix "$${AGB_GATE3_CHART_PREFIX:-var/benchmark/gate3-asm-ensemble-pipeline}"
+
+capture-gate3-natural-validation:
+	PYTHONPATH=python:scripts python3 scripts/run_live_bpf_observer.py \
+		--duration "$${AGB_GATE3_NATURAL_DURATION:-120}" \
+		--bpftrace-command "$${AGB_BPFTRACE_COMMAND:-sudo bpftrace}" \
+		--target-uid "$${AGB_CAPTURE_UID:--1}" \
+		--output-events "$${AGB_GATE3_NATURAL_EVENTS:-var/telemetry/gate3-natural-validation/events.jsonl}"
+
+prepare-gate3-natural-review:
+	PYTHONPATH=python:scripts python3 scripts/build_trajectory_candidates.py \
+		--input "$${AGB_GATE3_NATURAL_EVENTS:-var/telemetry/gate3-natural-validation/events.jsonl}" \
+		--output "$${AGB_GATE3_NATURAL_CANDIDATES:-var/telemetry/gate3-natural-validation/candidates.jsonl}" \
+		--collector-revision "$${AGB_COLLECTOR_REVISION:-$$(python3 scripts/fingerprint_collector.py)}" \
+		--coverage-scope system-wide
+	PYTHONPATH=python:scripts python3 scripts/build_review_queue.py \
+		--input "$${AGB_GATE3_NATURAL_CANDIDATES:-var/telemetry/gate3-natural-validation/candidates.jsonl}" \
+		--output "$${AGB_GATE3_NATURAL_QUEUE:-var/telemetry/gate3-natural-validation/review-queue.jsonl}" \
+		--review-template "$${AGB_GATE3_NATURAL_REVIEWS:-var/telemetry/gate3-natural-validation/reviews.jsonl}"
+	python3 scripts/build_review_html.py \
+		--input "$${AGB_GATE3_NATURAL_QUEUE:-var/telemetry/gate3-natural-validation/review-queue.jsonl}" \
+		--output "$${AGB_GATE3_NATURAL_HTML:-var/telemetry/gate3-natural-validation/review.html}"
+
+review-gate3-natural-validation:
+	python3 scripts/serve_review_ui.py \
+		--queue "$${AGB_GATE3_NATURAL_QUEUE:-var/telemetry/gate3-natural-validation/review-queue.jsonl}" \
+		--reviews "$${AGB_GATE3_NATURAL_REVIEWS:-var/telemetry/gate3-natural-validation/reviews.jsonl}" \
+		--port "$${AGB_REVIEW_PORT:-8765}"
+
+export-gate3-natural-validation:
+	PYTHONPATH=python:scripts python3 scripts/export_reviewed_corpus.py \
+		--candidates "$${AGB_GATE3_NATURAL_CANDIDATES:-var/telemetry/gate3-natural-validation/candidates.jsonl}" \
+		--reviews "$${AGB_GATE3_NATURAL_REVIEWS:-var/telemetry/gate3-natural-validation/reviews.jsonl}" \
+		--output "$${AGB_GATE3_NATURAL_CORPUS:-var/telemetry/gate3-natural-validation/corpus.jsonl}"
+
+gate3-novel-controlled-lab:
+	cargo build --quiet --bin agb-lab-workload
+	PYTHONPATH=python:scripts python3 scripts/run_protected_corpus_lab.py \
+		--profile novel-validation \
+		--bpftrace-command "$${AGB_BPFTRACE_COMMAND:-sudo bpftrace}" \
+		--duration "$${AGB_GATE3_NOVEL_DURATION:-25}" \
+		--cases-per-class "$${AGB_GATE3_NOVEL_CASES:-30}" \
+		--output-root "$${AGB_GATE3_NOVEL_ROOT:-var/telemetry/gate3-novel-controlled}"
+
+freeze-gate3-validation:
+	PYTHONPATH=python:scripts python3 scripts/freeze_gate3_validation.py \
+		--natural-corpus "$${AGB_GATE3_NATURAL_CORPUS:-var/telemetry/gate3-natural-validation/corpus.jsonl}" \
+		--controlled-corpus "$${AGB_GATE3_NOVEL_CORPUS:-var/telemetry/gate3-novel-controlled/corpus.jsonl}" \
+		--checkpoint "seed-1:$${ASM_CM_SEED1_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_1/candidate/checkpoint_final.pt}:$${ASM_CM_SEED1_SHA256:-96293688518fc0a2e83525af6ad28d16f39677980432762328bf4ad8aac654de}" \
+		--checkpoint "seed-2:$${ASM_CM_SEED2_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_2/candidate/checkpoint_final.pt}:$${ASM_CM_SEED2_SHA256:-a1a67b4e066b0cabba00d0f17d27c77d29ac2d0ad3dfabc8baf61ff51dba9342}" \
+		--checkpoint "seed-3:$${ASM_CM_SEED3_CHECKPOINT:-../gitlab/ASM/runs/asm_c2_fw_lm_confirmation/seed_3/candidate/checkpoint_final.pt}:$${ASM_CM_SEED3_SHA256:-698979a684a02c4191e3a5ed09256df86d3e81939de988e0809e5433cbc90f4b}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:-../gitlab/ASM/src}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:-4c8eddf2f07d9aec800769323d7e1effbd64815a}" \
+		--output "$${AGB_GATE3_VALIDATION_FREEZE:-var/benchmark/gate3-validation-freeze.json}"
+
+evaluate-gate3-validation:
+	PYTHONPATH=python:scripts "$${ASM_PYTHON:-.venv/bin/python}" scripts/evaluate_gate3_validation.py \
+		--freeze "$${AGB_GATE3_VALIDATION_FREEZE:-var/benchmark/gate3-validation-freeze.json}" \
+		--asm-source-root "$${ASM_SOURCE_ROOT:-../gitlab/ASM/src}" \
+		--asm-source-revision "$${ASM_SOURCE_REVISION:-4c8eddf2f07d9aec800769323d7e1effbd64815a}" \
+		--device "$${ASM_DEVICE:-cuda}" \
+		--output "$${AGB_GATE3_VALIDATION_OUTPUT:-var/benchmark/gate3-validation-final.json}"
 
 gate4-reversible-denial:
 	cargo build --quiet --bin agb-lab-workload --bin agb-policy-dry-run
