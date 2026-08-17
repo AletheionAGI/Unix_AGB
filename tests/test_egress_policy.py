@@ -23,9 +23,11 @@ class EgressPolicyTests(unittest.TestCase):
         self.assertEqual(self.policy.evaluate(event("127.0.0.1", 8080))["effect"], "ALLOW")
         self.assertEqual(self.policy.evaluate(event(exe="/usr/bin/git"))["effect"], "ALLOW")
 
-    def test_unresolved_or_pending_destination_never_becomes_allow(self):
+    def test_unresolved_destination_never_becomes_allow(self):
         self.assertEqual(self.policy.evaluate(event("0.0.0.0", 0))["effect"], "ABSTAIN")
-        self.assertEqual(self.policy.evaluate(event(result="pending"))["effect"], "ABSTAIN")
+
+    def test_known_external_pending_connect_is_denied_before_completion(self):
+        self.assertEqual(self.policy.evaluate(event(result="pending"))["effect"], "DENY")
 
     def test_local_unix_socket_is_not_external_network(self):
         local = event(None, None, family="AF_UNIX")

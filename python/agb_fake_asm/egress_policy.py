@@ -21,8 +21,6 @@ class ExecutableEgressPolicy:
         family = resource.get("family")
         if family == "AF_UNIX":
             return {"effect": "ALLOW", "reason": "LOCAL_UNIX_SOCKET"}
-        if event.get("result") in {"requested", "pending"}:
-            return {"effect": "ABSTAIN", "reason": "CONNECT_OUTCOME_NOT_FINAL"}
         address = resource.get("address")
         port = resource.get("port")
         if family not in {"AF_INET", "AF_INET6"} or not isinstance(address, str):
