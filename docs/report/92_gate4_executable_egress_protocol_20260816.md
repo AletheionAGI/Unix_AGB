@@ -1,4 +1,4 @@
-# Gate 4 executable-scoped egress pilot
+# Gate 4 executable-scoped egress protocol
 
 This pilot installs a seccomp-user-notify filter only in a disposable
 `/usr/bin/curl` process tree. It does not install nftables, AppArmor, systemd,

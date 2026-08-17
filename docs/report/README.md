@@ -41,6 +41,13 @@ remains authoritative in `ROADMAP.md`.
   with unanimous votes, explicit disagreement telemetry, and CUDA latency.
 - report 89: preregistered natural/novel-controlled ensemble validation, with
   explicit separation between selective pipeline FPR and neural inference.
+- report 90: conservative review exclusion and syscall-outcome-aware BPF v2
+  boundary, preserving the historical v1 evidence limitation.
+- report 91: completed executable-scoped curl egress denial with loopback
+  preserved, real `EACCES`, rollback by process exit, and zero stale wakeups
+  after synchronization repair.
+- report 92: reproducible protocol and promotion criteria for that disposable
+  seccomp-user-notify egress pilot.
 
 ## Administrative boundary
 

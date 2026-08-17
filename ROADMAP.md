@@ -226,6 +226,15 @@ expiry is observed, and teardown plus clean restart restores access. No system
 path or unrelated process is modified. Because Landlock cannot relax policy in
 a running process, rollback is explicitly process replacement. See report 82.
 
+A second disposable pilot restricts external `connect` calls for an exact
+`/usr/bin/curl` process tree through seccomp-user-notify. Loopback and local
+resolver access remain available, decoded external IPv4/IPv6 calls receive
+`EACCES`, process exit removes the filter, and no system-wide rule is installed.
+The corrected run observed zero stale listener wakeups. This validates the
+narrow mechanism only; persistent service lifecycle, authenticated policy
+distribution, overload behavior, and unrelated-executable isolation remain
+promotion blockers. See reports 91 and 92.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;
