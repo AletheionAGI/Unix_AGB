@@ -98,6 +98,36 @@ class BpfNormalizerTests(unittest.TestCase):
         self.assertEqual(socket_event["operation"], "network.socket")
         self.assertEqual(bind_event["operation"], "network.bind")
 
+    def test_nonblocking_connect_is_pending_not_failed(self) -> None:
+        event = normalize(
+            f"AGB_BPF|network.connect|pid={os.getpid()}|fd=9|family=AF_INET|"
+            "address=198.51.100.4|port=443|socket_type=1|protocol=6|ret=-115|syscall=connect",
+            {},
+        )
+        assert event is not None
+        self.assertEqual(event["result"], "pending")
+
+    def test_raw_sockaddr_snapshot_overrides_ambiguous_rendering(self) -> None:
+        correlator = CorrelatingNormalizer()
+        sequences: dict[str, int] = {}
+        correlator.normalize(
+            f"AGB_BPF|network.connect.enter|tid=7|pid={os.getpid()}|fd=4|"
+            "family=AF_INET|address=0.0.0.0|port=0|socket_type=1|protocol=6",
+            sequences,
+        )
+        correlator.normalize(
+            "AGB_BPF|network.connect.sockaddr|tid=7|"
+            "sockaddr_hex=\\x02\\x00\\x01\\xbb\\xc6\\x33\\x64\\x2a",
+            sequences,
+        )
+        event = correlator.normalize(
+            f"AGB_BPF|network.connect.exit|tid=7|pid={os.getpid()}|ret=0",
+            sequences,
+        )
+        assert event is not None
+        self.assertEqual(event["resource"]["address"], "198.51.100.42")
+        self.assertEqual(event["resource"]["port"], 443)
+
     def test_sensitive_path_is_labeled_only_by_explicit_policy(self) -> None:
         line = (
             f"AGB_BPF|file.open|pid={os.getpid()}|uid={os.getuid()}|gid=1000|"

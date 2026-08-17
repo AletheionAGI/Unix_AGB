@@ -29,8 +29,8 @@ def ambiguity_reasons(candidate: dict[str, Any], review: dict[str, Any]) -> list
         resource = event.get("resource", {})
         if subject.get("exe") in {None, "", "<unavailable>", "<unknown>"}:
             reasons.add("executable identity is unavailable")
-        if event.get("result") == "requested":
-            reasons.add("syscall outcome is not observed")
+        if event.get("result") in {"requested", "pending"}:
+            reasons.add("syscall outcome is not final")
         if event.get("operation") == "network.connect":
             if resource.get("address") in WILDCARD_ADDRESSES or resource.get("port") in {0, None}:
                 reasons.add("network destination is unresolved or wildcard")

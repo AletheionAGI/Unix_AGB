@@ -47,6 +47,7 @@ tracepoint:syscalls:sys_enter_connect
     printf("AGB_BPF|network.connect.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=connect\n",
       tid, pid, uid, gid, comm, $fd, $family, $type, $protocol, args->addrlen);
   }
+  printf("AGB_BPF|network.connect.sockaddr|tid=%d|sockaddr_hex=%rx\n", tid, buf(uptr(args->uservaddr), args->addrlen));
 }
 
 tracepoint:syscalls:sys_exit_connect
@@ -101,6 +102,7 @@ tracepoint:syscalls:sys_enter_bind
     printf("AGB_BPF|network.bind.enter|tid=%d|pid=%d|uid=%d|gid=%d|comm=%s|fd=%d|family=%d|socket_type=%d|protocol=%d|addrlen=%d|syscall=bind\n",
       tid, pid, uid, gid, comm, $fd, $family, $type, $protocol, args->addrlen);
   }
+  printf("AGB_BPF|network.bind.sockaddr|tid=%d|sockaddr_hex=%rx\n", tid, buf(uptr(args->umyaddr), args->addrlen));
 }
 
 tracepoint:syscalls:sys_exit_bind

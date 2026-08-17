@@ -42,6 +42,10 @@ class ConservativeReviewTests(unittest.TestCase):
         self.assertEqual(result["label"], "inconclusive")
         self.assertIn("outcome", result["review_reason"])
 
+    def test_pending_network_evidence_is_excluded(self) -> None:
+        result = audit_reviews([candidate("pending", "198.51.100.4")], [review()])[0]
+        self.assertEqual(result["label"], "inconclusive")
+
     def test_natural_malicious_review_is_never_accepted_automatically(self) -> None:
         result = audit_reviews([candidate()], [review("malicious")])[0]
         self.assertEqual(result["label"], "inconclusive")

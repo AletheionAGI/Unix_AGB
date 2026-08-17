@@ -123,7 +123,7 @@ impl SecurityEvent {
         }
         if !matches!(
             self.result.as_str(),
-            "requested" | "allowed" | "denied" | "failed"
+            "requested" | "pending" | "allowed" | "denied" | "failed"
         ) {
             return Err("unsupported result".into());
         }

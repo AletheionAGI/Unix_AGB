@@ -15,6 +15,29 @@ from pathlib import Path
 from typing import Any
 
 
+def decode_sockaddr(encoded: str) -> dict[str, object]:
+    raw = bytes.fromhex(encoded.replace("\\x", "").replace(" ", ""))
+    if len(raw) < 2:
+        raise ValueError("sockaddr snapshot is truncated")
+    family = int.from_bytes(raw[:2], sys.byteorder)
+    if family == socket.AF_INET and len(raw) >= 8:
+        return {
+            "family": "AF_INET",
+            "port": int.from_bytes(raw[2:4], "big"),
+            "address": socket.inet_ntop(socket.AF_INET, raw[4:8]),
+        }
+    if family == socket.AF_INET6 and len(raw) >= 24:
+        return {
+            "family": "AF_INET6",
+            "port": int.from_bytes(raw[2:4], "big"),
+            "address": socket.inet_ntop(socket.AF_INET6, raw[8:24]),
+        }
+    if family == socket.AF_UNIX:
+        path = raw[2:].split(b"\0", 1)[0].decode(errors="replace")
+        return {"family": "AF_UNIX", "unix_path": path}
+    return {"family": str(family)}
+
+
 def parse_bpf_line(line: str) -> tuple[str, dict[str, str]] | None:
     fields = line.rstrip("\n").split("|")
     if len(fields) < 3 or fields[0] != "AGB_BPF":
@@ -36,6 +59,12 @@ class CorrelatingNormalizer:
         if operation.endswith(".enter"):
             base = operation.removesuffix(".enter")
             self.pending[(attributes["tid"], base)] = attributes
+            return None
+        if operation.endswith(".sockaddr"):
+            base = operation.removesuffix(".sockaddr")
+            pending = self.pending.get((attributes["tid"], base))
+            if pending is not None:
+                pending.update(attributes)
             return None
         if operation.endswith(".exit"):
             base = operation.removesuffix(".exit")
@@ -101,6 +130,10 @@ def normalize(
     if parsed is None:
         return None
     operation, attributes = parsed
+    if "sockaddr_hex" in attributes:
+        attributes.update(
+            {key: str(value) for key, value in decode_sockaddr(attributes["sockaddr_hex"]).items()}
+        )
     pid = int(attributes["pid"])
     subject = subject_for(
         pid,
@@ -173,7 +206,13 @@ def normalize(
             error_number = -return_value
             resource["error_number"] = error_number
             resource["error_name"] = errno.errorcode.get(error_number, "UNKNOWN")
-            result = "denied" if error_number in {errno.EACCES, errno.EPERM} else "failed"
+            if operation == "network.connect" and error_number in {
+                errno.EINPROGRESS,
+                errno.EALREADY,
+            }:
+                result = "pending"
+            else:
+                result = "denied" if error_number in {errno.EACCES, errno.EPERM} else "failed"
     if "syscall" in attributes:
         resource["syscall"] = attributes["syscall"]
     return {
