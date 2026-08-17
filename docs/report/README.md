@@ -51,6 +51,9 @@ remains authoritative in `ROADMAP.md`.
 - report 93: adversarial process/artifact binding, notification-ID validation,
   scoped failure behavior, thread/TGID correction, and real out-of-scope
   executable isolation for the egress pilot.
+- report 94: real concurrent seccomp notification latency, bounded overload,
+  timeout and adapter-failure behavior, plus the preserved negative result that
+  listener loss stalls and disrupts an inherited out-of-scope subprocess.
 
 ## Administrative boundary
 

@@ -236,8 +236,15 @@ distribution, overload behavior, and unrelated-executable isolation remain
 promotion blockers. Adversarial identity binding now covers TGID/start time,
 device/inode/SHA-256, notification-ID validity, replacement/PID-reuse tests,
 scoped failure behavior, and a real inherited out-of-scope executable probe.
-Persistent lifecycle and formal overload/latency benchmarks remain promotion
-blockers. See reports 91–93.
+The concurrent userspace notification benchmark measured 1.148 ms p50,
+1.939 ms p95, and 2.366 ms p99 in its normal 256-attempt scenario. Bounded
+overload, decision timeout, and adapter failure denied only the target while
+the live broker allowed an inherited out-of-scope probe. Total listener loss
+produced a negative result: the disposable group stalled until its two-second
+watchdog terminated it, and the inherited out-of-scope subprocess was also
+disrupted. Formal live-listener latency/overload measurement is complete;
+persistent lifecycle, authenticated policy distribution, and safe
+listener-loss recovery remain promotion blockers. See reports 91–94.
 
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
