@@ -279,6 +279,14 @@ nothing was installed or enabled. Process groups still substitute for delegated
 cgroups, and the packaged runtime is intentionally not promoted. See reports
 98–100.
 
+The cgroup follow-up ran the in-flight seccomp proof and a guardian-failure
+workload inside separate user-systemd transient services. All protected members
+matched the exact cgroup v2 ControlGroup, direct `cgroup.kill` executed after
+50.221 ms, an unrelated process survived, and both units were collected to
+`LoadState=not-found`. This validates a delegated user cgroup boundary, not a
+privileged persistent service. Disposable-VM installation, reboot recovery,
+and uninstall residue checks remain outstanding. See report 101.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;

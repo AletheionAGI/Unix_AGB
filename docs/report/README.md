@@ -69,6 +69,9 @@ remains authoritative in `ROADMAP.md`.
   bounded restart loops, and launcher-scoped response to guardian death.
 - report 100: disabled-by-default systemd/config/install-manifest packaging
   scaffold, validated but deliberately neither installed nor started.
+- report 101: real cgroup v2 validation under two user-systemd transient units,
+  including the seccomp recovery proof, direct `cgroup.kill`, external-process
+  isolation, and complete transient-unit collection.
 
 ## Administrative boundary
 
