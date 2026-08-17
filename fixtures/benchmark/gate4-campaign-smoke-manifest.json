@@ -1,0 +1,23 @@
+{
+  "protocol": "unix-agb-gate4-automated-campaign-v1",
+  "artifact_path": "var/package/unix-agb-egress-guardian-lab_0.3.1_all.deb",
+  "artifact_sha256": "a14a3d342da5ba6b2ca5c49824784d99f6d414afcd3b5dc2b4fc556d784b0c00",
+  "policy_revision": "policy:bpf-observer-v2",
+  "domains": [
+    "concurrency_endurance",
+    "namespace_application_isolation",
+    "production_resource_latency",
+    "real_application_coverage",
+    "ubuntu_boot_matrix"
+  ],
+  "application_classes": ["smoke-service", "smoke-cli", "smoke-daemon"],
+  "setup": [["/usr/bin/true"]],
+  "workloads": [
+    {"id": "smoke-service-1", "class": "smoke-service", "command": ["/usr/bin/sleep", "3600"], "allow_early_exit": false},
+    {"id": "smoke-cli-1", "class": "smoke-cli", "command": ["/usr/bin/sleep", "3600"], "allow_early_exit": false},
+    {"id": "smoke-daemon-1", "class": "smoke-daemon", "command": ["/usr/bin/sleep", "3600"], "allow_early_exit": false}
+  ],
+  "probes": [["/usr/bin/true"]],
+  "teardown": [["/usr/bin/true"]],
+  "artifacts": ["var/package/unix-agb-egress-guardian-lab_0.3.1_all.deb"]
+}
