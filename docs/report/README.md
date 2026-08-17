@@ -75,6 +75,8 @@ remains authoritative in `ROADMAP.md`.
 - report 102: disabled-by-default Debian lifecycle in a disposable Ubuntu 26.04
   VM, successful cold-boot recovery and residue-free purge, with the graceful
   Multipass reboot failure preserved as a negative result.
+- report 103: the same package artifact on Ubuntu 24.04.4, with successful
+  guest-driven graceful reboot recovery and a second residue-free purge.
 
 ## Administrative boundary
 

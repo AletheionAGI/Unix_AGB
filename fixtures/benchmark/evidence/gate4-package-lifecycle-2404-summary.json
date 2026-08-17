@@ -1,0 +1,58 @@
+{
+  "proof": "unix-agb-gate4-package-lifecycle-ubuntu-2404-v1",
+  "date": "2026-08-17",
+  "environment": {
+    "hypervisor": "Multipass 1.16.3 qemu",
+    "instance": "unix-agb-gate4-2404",
+    "release": "Ubuntu 24.04.4 LTS",
+    "image_hash_prefix": "6e40c07ae715",
+    "kernel": "6.8.0-137-generic",
+    "systemd": "255.4-1ubuntu8.17",
+    "clean_snapshot": "clean-base"
+  },
+  "package": {
+    "name": "unix-agb-egress-guardian-lab",
+    "version": "0.1.0",
+    "architecture": "all",
+    "sha256": "b63e9950ac3f1c6053f34f2444efaa2f70197066e93c909c56b505d51fed2f0a",
+    "enabled_by_default": false,
+    "enforcement_active": false
+  },
+  "installation": {
+    "dedicated_uid": 109,
+    "dedicated_gid": 112,
+    "initial_unit_enabled": false,
+    "initial_unit_active": false,
+    "activation_required_marker": true,
+    "systemd_verify_passed": true
+  },
+  "recovery": {
+    "boot_id_before": "ae7df655-075c-41f4-b8b7-c730f712393c",
+    "boot_id_after": "3fd672e6-88cf-4dc5-a056-6644bdec94cd",
+    "guest_systemd_reboot_completed": true,
+    "unit_enabled_after_reboot": true,
+    "unit_active_after_reboot": true,
+    "health_socket_responded": true,
+    "policy_revision": "policy:gate4-egress-guardian-v1",
+    "enforcement_active": false
+  },
+  "cleanup": {
+    "package_absent": true,
+    "unit_absent": true,
+    "accounts_absent": true,
+    "processes_absent": true,
+    "listeners_absent": true,
+    "cgroups_absent": true,
+    "paths_absent": true
+  },
+  "criteria": {
+    "disabled_by_default": true,
+    "explicit_activation_only": true,
+    "graceful_reboot_recovery": true,
+    "complete_purge": true,
+    "persistent_enforcement_validated": false
+  },
+  "lifecycle_supported": true,
+  "supported": false,
+  "verdict": "The scoped package lifecycle passed on Ubuntu 24.04.4 LTS; persistent enforcement was intentionally not tested."
+}

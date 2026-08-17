@@ -294,6 +294,13 @@ stalled after the guest reset and required daemon recovery. The runtime reports
 `enforcement_active: false`, so persistent enforcement and graceful reboot
 recovery remain outstanding. See report 102.
 
+The identical package artifact then passed the compatibility matrix on Ubuntu
+24.04.4: inactive-by-default installation, explicit activation, guest-driven
+graceful reboot recovery, exact revision health response, and residue-free
+purge. This narrows report 102's reboot failure to its observed Multipass 1.16.3
+control path/environment; it does not prove the cause. Persistent enforcement
+remains unimplemented. See report 103.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;
