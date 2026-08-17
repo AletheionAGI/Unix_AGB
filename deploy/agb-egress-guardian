@@ -1,110 +1,107 @@
 #!/usr/bin/python3
-"""Boot-persistent lifecycle guardian for the Gate 4 packaging laboratory.
-
-This daemon exposes only a local health socket.  It intentionally does not
-install seccomp filters or claim persistent enforcement readiness.
-"""
-
+"""Persistent exact-launch seccomp guardian for the Gate 4 laboratory."""
 from __future__ import annotations
-
-import argparse
-import json
-import os
-import signal
-import socket
-import sys
-import time
+import argparse, array, errno, fcntl, hashlib, hmac, json, os, select, signal, socket, struct, sys, threading, time
 from pathlib import Path
-
-
-EXPECTED_POLICY_REVISION = "policy:gate4-egress-guardian-v1"
-
-
-def atomic_json(path: Path, value: dict[str, object]) -> None:
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
-    os.chmod(temporary, 0o600)
-    os.replace(temporary, path)
-
-
-def load_config(path: Path) -> dict[str, object]:
-    config = json.loads(path.read_text())
-    if config.get("enabled") is not True:
-        raise ValueError("configuration is not enabled")
-    if config.get("mode") != "laboratory-lifecycle-only":
-        raise ValueError("mode must be laboratory-lifecycle-only")
-    if config.get("policy_revision") != EXPECTED_POLICY_REVISION:
-        raise ValueError("policy revision mismatch")
-    if config.get("protected_cgroup") is not None:
-        raise ValueError("lifecycle package must not claim a protected cgroup")
-    return config
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--socket", type=Path, default=Path("/run/unix-agb/guardian.sock"))
-    parser.add_argument("--state", type=Path, default=Path("/var/lib/unix-agb/egress-guardian-state.json"))
-    args = parser.parse_args()
-
-    try:
-        config = load_config(args.config)
-    except (OSError, ValueError, json.JSONDecodeError) as error:
-        print(f"unix-agb-egress-guardian: refusing startup: {error}", file=sys.stderr)
-        return 78
-
-    stopping = False
-
-    def stop(_signum: int, _frame: object) -> None:
-        nonlocal stopping
-        stopping = True
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
-    args.socket.parent.mkdir(parents=True, exist_ok=True)
-    args.state.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        args.socket.unlink()
-    except FileNotFoundError:
-        pass
-
-    started_ns = time.time_ns()
-    state = {
-        "schema_version": 1,
-        "status": "ready",
-        "pid": os.getpid(),
-        "uid": os.getuid(),
-        "gid": os.getgid(),
-        "started_ns": started_ns,
-        "policy_revision": config["policy_revision"],
-        "mode": config["mode"],
-        "enforcement_active": False,
-    }
-    atomic_json(args.state, state)
-
-    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    listener.bind(str(args.socket))
-    os.chmod(args.socket, 0o660)
-    listener.listen(8)
-    listener.settimeout(0.25)
-    try:
-        while not stopping:
-            try:
-                connection, _ = listener.accept()
-            except TimeoutError:
-                continue
-            with connection:
-                request = connection.recv(128).strip()
-                response = state if request == b"health" else {"status": "bad-request"}
-                connection.sendall(json.dumps(response, sort_keys=True).encode() + b"\n")
-    finally:
-        listener.close()
-        try:
-            args.socket.unlink()
-        except FileNotFoundError:
-            pass
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+REVISION="policy:gate4-egress-guardian-v2"; NOTE=struct.Struct("<QIIiIQQQQQQQ"); RECV=0xC0502100; SEND=0xC0182101; VALID=0x40082102; CONTINUE=1
+NONCES:set[str]=set()
+def encode(v:dict[str,object])->bytes:return json.dumps(v,sort_keys=True,separators=(",",":")).encode()
+def authenticate(message:dict[str,object],peer_pid:int,peer_uid:int,peer_gid:int,secret:bytes,now:int)->tuple[bool,str]:
+ candidate=dict(message);signature=str(candidate.pop("hmac_sha256",""));nonce=str(candidate.get("nonce",""))
+ if peer_uid!=0 or peer_gid!=0:return False,"PEER_NOT_ROOT"
+ if candidate.get("pid")!=peer_pid:return False,"PEER_PID_MISMATCH"
+ if candidate.get("policy_revision")!=REVISION:return False,"POLICY_REVISION_MISMATCH"
+ if int(candidate.get("expires_ns",0))<=now:return False,"HANDOFF_EXPIRED"
+ if not nonce or nonce in NONCES:return False,"HANDOFF_REPLAY"
+ expected=hmac.new(secret,encode(candidate),hashlib.sha256).hexdigest()
+ if not hmac.compare_digest(signature,expected):return False,"HANDOFF_HMAC_INVALID"
+ NONCES.add(nonce);return True,"HANDOFF_AUTHENTICATED"
+def valid(fd:int,n:int)->bool:
+ try: fcntl.ioctl(fd,VALID,bytearray(struct.pack("<Q",n)),True); return True
+ except OSError as e:
+  if e.errno==errno.ENOENT:return False
+  raise
+def tgid(tid:int)->int:
+ for line in Path(f"/proc/{tid}/status").read_text().splitlines():
+  if line.startswith("Tgid:"):return int(line.split()[1])
+ raise ValueError("missing Tgid")
+def local(adapter:socket.socket,address:int,length:int)->bool:
+ if not 2<=length<=128:raise ValueError("sockaddr length")
+ adapter.send(struct.pack("<QI",address,length));raw=adapter.recv(128)
+ if len(raw)!=length:raise ValueError("truncated sockaddr")
+ family=int.from_bytes(raw[:2],"little")
+ return (family==socket.AF_INET and len(raw)>=8 and raw[4]==127) or (family==socket.AF_INET6 and len(raw)>=24 and raw[8:24]==b"\0"*15+b"\1") or family==socket.AF_UNIX
+def answer(fd:int,n:int,deny:bool)->None:
+ if valid(fd,n):fcntl.ioctl(fd,SEND,struct.pack("<Qqii",n,0,-errno.EACCES if deny else 0,0 if deny else CONTINUE))
+def serve(fd:int,adapter:socket.socket,target:int,audit:Path,crash_after:int|None,generation:int)->bool:
+ processed=0
+ try:
+  while True:
+   note=bytearray(NOTE.size)
+   try:fcntl.ioctl(fd,RECV,note,True)
+   except OSError as e:
+            if e.errno in {errno.EINTR,errno.ENOENT}:continue
+            return False
+   values=NOTE.unpack(note); n,tid=values[0],values[1]; args=values[6:]; started=time.monotonic_ns(); scope=False; deny=True; reason="FAIL_CLOSED"
+   try:
+    scope=tgid(tid)==target
+    if not scope:deny=False;reason="OUT_OF_SCOPE"
+    elif local(adapter,args[1],args[2]):deny=False;reason="LOOPBACK"
+    else:reason="EXTERNAL_EGRESS"
+   except (OSError,ValueError):deny=scope;reason="ADAPTER_FAILURE"
+   record={"target_pid":target,"notified_tid":tid,"in_scope":scope,"effect":"DENY" if deny else "ALLOW","reason":reason,"latency_us":(time.monotonic_ns()-started)//1000}
+   with audit.open("a") as out:out.write(json.dumps({**record,"worker_generation":generation},sort_keys=True)+"\n");out.flush();os.fsync(out.fileno())
+   answer(fd,n,deny)
+   processed+=1
+   if crash_after is not None and processed>=crash_after:return True
+ finally:os.close(fd)
+def supervise(listener:int,adapter_fd:int,target:int,audit:Path,crash_after:int|None,crash_all:bool)->None:
+ adapter=socket.socket(fileno=adapter_fd);generation=1;restarts=0
+ try:
+  while True:
+   crashed=serve(os.dup(listener),adapter,target,audit,crash_after if generation==1 or crash_all else None,generation)
+   if not crashed:break
+   restarts+=1
+   with audit.open("a") as out:out.write(json.dumps({"type":"worker_restart","from_generation":generation,"restarts":restarts},sort_keys=True)+"\n")
+   if restarts>2:break
+   generation+=1
+ finally:os.close(listener);adapter.close()
+def registration(server:socket.socket,secret:bytes,audit:Path)->None:
+ connection,_=server.accept()
+ with connection:
+  peer_pid,peer_uid,peer_gid=struct.unpack("3i",connection.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12)); payload,ancillary,*_=connection.recvmsg(8192,socket.CMSG_SPACE(8)); message=json.loads(payload);ok,_reason=authenticate(message,peer_pid,peer_uid,peer_gid,secret,time.monotonic_ns());fds=array.array("i")
+  if ok and os.getpgid(int(message["target_pid"]))!=int(message.get("protected_pgid",-1)):ok=False
+  for level,kind,data in ancillary:
+   if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:fds.frombytes(data[:len(data)-len(data)%fds.itemsize])
+  if not ok or len(fds)!=2:
+   for descriptor in fds:os.close(descriptor)
+   connection.sendall(b"REJECTED");return
+  connection.sendall(b"READY");threading.Thread(target=supervise,args=(fds[0],fds[1],int(message["target_pid"]),audit,message.get("crash_after"),bool(message.get("crash_all"))),daemon=True).start()
+def main()->int:
+ parser=argparse.ArgumentParser();parser.add_argument("--config",type=Path,required=True);args=parser.parse_args();config=json.loads(args.config.read_text())
+ if config.get("enabled") is not True or config.get("mode")!="laboratory-exact-launch" or config.get("policy_revision")!=REVISION:
+  print("unix-agb-egress-guardian: configuration is not enabled or revision-bound",file=sys.stderr);return 78
+ secret=Path(config["handoff_key"]).read_bytes().strip()
+ if len(secret)<32:return 78
+ runtime=Path("/run/unix-agb");state=Path("/var/lib/unix-agb");runtime.mkdir(parents=True,exist_ok=True);state.mkdir(parents=True,exist_ok=True);health_path=runtime/"guardian.sock";control_path=runtime/"control.sock"
+ for path in (health_path,control_path):
+  try:path.unlink()
+  except FileNotFoundError:pass
+ health=socket.socket(socket.AF_UNIX);health.bind(str(health_path));health.listen(4);control=socket.socket(socket.AF_UNIX,socket.SOCK_SEQPACKET);control.bind(str(control_path));control.listen(8);os.chmod(health_path,0o660);os.chmod(control_path,0o660);ready={"status":"ready","pid":os.getpid(),"uid":os.getuid(),"gid":os.getgid(),"policy_revision":REVISION,"enforcement_active":True};(state/"egress-guardian-state.json").write_text(json.dumps(ready,indent=2,sort_keys=True)+"\n");stopping=False
+ def stop(*_args:object)->None:
+  nonlocal stopping;stopping=True
+ signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop);audit=state/"egress-enforcement.jsonl";audit.touch(exist_ok=True)
+ try:
+  while not stopping:
+   readable,_,_=select.select([health,control],[],[],.25)
+   if health in readable:
+    client,_=health.accept()
+    with client:client.recv(128);client.sendall(encode(ready)+b"\n")
+   if control in readable:registration(control,secret,audit)
+ finally:
+  health.close();control.close()
+  for path in (health_path,control_path):
+   try:path.unlink()
+   except FileNotFoundError:pass
+ return 0
+if __name__=="__main__":raise SystemExit(main())

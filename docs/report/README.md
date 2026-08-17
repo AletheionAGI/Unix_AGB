@@ -77,6 +77,12 @@ remains authoritative in `ROADMAP.md`.
   Multipass reboot failure preserved as a negative result.
 - report 103: the same package artifact on Ubuntu 24.04.4, with successful
   guest-driven graceful reboot recovery and a second residue-free purge.
+- report 104: preregistered persistent exact-launch enforcement protocol,
+  including scoped memory/listener handoff, failure teardown, reboot, latency,
+  and residue criteria for Ubuntu 24.04 and 26.04.
+- report 105: execution of that protocol with one reproducible package hash;
+  all narrow exact-launch criteria passed on both Ubuntu versions, while an
+  unrelated Ubuntu 26.04 GRUB/fd0 degraded-boot result was preserved.
 
 ## Administrative boundary
 

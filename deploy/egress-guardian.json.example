@@ -1,7 +1,8 @@
 {
   "enabled": false,
-  "mode": "laboratory-only",
-  "policy_revision": "policy:gate4-egress-guardian-v1",
+  "mode": "laboratory-exact-launch",
+  "policy_revision": "policy:gate4-egress-guardian-v2",
+  "handoff_key": "/etc/unix-agb/handoff.key",
   "recovery_deadline_ms": 50,
   "restart_budget": {
     "maximum": 2,

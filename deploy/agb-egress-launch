@@ -1,0 +1,45 @@
+#!/usr/bin/python3
+"""Launch one command under the persistent Gate 4 seccomp guardian."""
+from __future__ import annotations
+import argparse,array,ctypes,hashlib,hmac,json,os,select,socket,struct,time
+from pathlib import Path
+REVISION="policy:gate4-egress-guardian-v2";LIB=ctypes.CDLL("libseccomp.so.2",use_errno=True);LIBC=ctypes.CDLL(None,use_errno=True);LIB.seccomp_init.argtypes=[ctypes.c_uint32];LIB.seccomp_init.restype=ctypes.c_void_p;LIB.seccomp_rule_add.argtypes=[ctypes.c_void_p,ctypes.c_uint32,ctypes.c_int,ctypes.c_uint];LIB.seccomp_load.argtypes=[ctypes.c_void_p];LIB.seccomp_notify_fd.argtypes=[ctypes.c_void_p];LIB.seccomp_release.argtypes=[ctypes.c_void_p]
+def install()->int:
+ if LIBC.prctl(38,1,0,0,0)!=0:raise OSError(ctypes.get_errno(),"no_new_privs")
+ context=LIB.seccomp_init(0x7fff0000)
+ try:
+  if LIB.seccomp_rule_add(context,0x7fc00000,42,0)!=0 or LIB.seccomp_load(context)!=0:raise OSError(ctypes.get_errno(),"seccomp")
+  fd=LIB.seccomp_notify_fd(context)
+  if fd<0:raise OSError(ctypes.get_errno(),"notify_fd")
+  return fd
+ finally:LIB.seccomp_release(context)
+def encode(v:dict[str,object])->bytes:return json.dumps(v,sort_keys=True,separators=(",",":")).encode()
+def main()->int:
+ parser=argparse.ArgumentParser();parser.add_argument("--config",type=Path,default=Path("/etc/unix-agb/egress-guardian.json"));parser.add_argument("--inject-worker-crash-after",type=int);parser.add_argument("--inject-restart-exhaustion",action="store_true");parser.add_argument("command",nargs=argparse.REMAINDER);args=parser.parse_args()
+ if not args.command:parser.error("command required")
+ config=json.loads(args.config.read_text());secret=Path(config["handoff_key"]).read_bytes().strip();parent,child=socket.socketpair(type=socket.SOCK_SEQPACKET);pid=os.fork()
+ if pid==0:
+  parent.close();os.setpgid(0,0);listener=install();read,write=os.pipe();target=os.fork()
+  if target==0:os.close(write);os.read(read,1);os.execvp(args.command[0],args.command)
+  os.close(read);child.sendmsg([json.dumps({"target_pid":target}).encode()],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array("i",[listener]))]);child.recv(16);os.write(write,b"G");os.close(write);_,status=os.waitpid(target,0);child.send(json.dumps({"exit_code":os.waitstatus_to_exitcode(status)}).encode());os._exit(0)
+ child.close();payload,ancillary,*_=parent.recvmsg(4096,socket.CMSG_SPACE(4));target=int(json.loads(payload)["target_pid"]);fds=array.array("i")
+ for level,kind,data in ancillary:
+  if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:fds.frombytes(data[:fds.itemsize])
+ reader,guardian_reader=socket.socketpair(type=socket.SOCK_SEQPACKET);control=socket.socket(socket.AF_UNIX,socket.SOCK_SEQPACKET);control.connect("/run/unix-agb/control.sock");message={"pid":os.getpid(),"target_pid":target,"protected_pgid":pid,"policy_revision":REVISION,"nonce":os.urandom(16).hex(),"expires_ns":time.monotonic_ns()+1_000_000_000,"crash_after":args.inject_worker_crash_after,"crash_all":args.inject_restart_exhaustion};message["hmac_sha256"]=hmac.new(secret,encode(message),hashlib.sha256).hexdigest();control.sendmsg([encode(message)],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array("i",[fds[0],guardian_reader.fileno()]))])
+ if control.recv(32)!=b"READY":raise RuntimeError("guardian rejected handoff")
+ os.close(fds[0]);guardian_reader.close();control.close();parent.send(b"GO");result=None
+ while result is None:
+  ready,_,_=select.select([parent,reader],[],[],5)
+  if not ready:raise TimeoutError("protected launch stalled")
+  if reader in ready:
+   request=reader.recv(12)
+   if not request:
+    teardown_started=time.monotonic_ns();os.killpg(pid,9);os.waitpid(pid,0);print(json.dumps({"exit_code":125,"teardown":"guardian-channel-closed","teardown_us":(time.monotonic_ns()-teardown_started)//1000},sort_keys=True));return 125
+   address,length=struct.unpack("<QI",request)
+   try:
+    memory=os.open(f"/proc/{target}/mem",os.O_RDONLY);raw=os.pread(memory,length,address);os.close(memory)
+   except OSError:raw=b""
+   reader.send(raw)
+  if parent in ready:result=json.loads(parent.recv(4096))
+ reader.close();os.waitpid(pid,0);print(json.dumps(result,sort_keys=True));return int(result["exit_code"])
+if __name__=="__main__":raise SystemExit(main())

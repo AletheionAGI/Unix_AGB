@@ -301,6 +301,18 @@ purge. This narrows report 102's reboot failure to its observed Multipass 1.16.3
 control path/environment; it does not prove the cause. Persistent enforcement
 remains unimplemented. See report 103.
 
+The next opt-in package connected a root exact-launch wrapper to a persistent
+dedicated guardian through authenticated listener handoff. The same
+reproducible package hash on Ubuntu 24.04.4 and 26.04 allowed loopback, denied
+protected external connects with `EACCES`, preserved unregistered external
+networking, recovered a worker generation, enforced a bounded restart budget,
+terminated only the protected process group after guardian death, recovered
+the guardian across guest reboot, and purged without residue. This supports the
+narrow exact-launch laboratory mechanism only; retroactive attachment and
+production/system-wide enforcement remain outstanding. Ubuntu 26.04 also
+retained an unrelated `grub2-common`/virtual-fd0 degraded-boot result. See
+reports 104–105.
+
 - select the smallest suitable AppArmor, BPF-LSM, cgroup, or systemd surface;
 - enforce one controlled, reversible denial or containment class;
 - keep neural inference and network calls outside the hot path;

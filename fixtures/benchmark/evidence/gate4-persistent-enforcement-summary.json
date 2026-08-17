@@ -1,0 +1,48 @@
+{
+  "proof": "unix-agb-gate4-persistent-exact-launch-v1",
+  "date": "2026-08-17",
+  "package": {
+    "name": "unix-agb-egress-guardian-lab",
+    "version": "0.2.0",
+    "sha256": "43dd5ff9c1088c440851dd33312f700fcfc62f55f42743d64794532dd9813e9f",
+    "reproducible_build_confirmed": true,
+    "policy_revision": "policy:gate4-egress-guardian-v2"
+  },
+  "ubuntu_2404": {
+    "release": "Ubuntu 24.04.4 LTS",
+    "boot_id_before": "97216f91-26e2-438e-9865-95f3c454b77e",
+    "boot_id_after": "bc32835d-231c-43d8-94ee-f56832d1b7a5",
+    "notification_latency_us": {"count": 16, "p50": 122, "p95": 254, "p99": 254},
+    "guardian_teardown_us": 303,
+    "post_reboot_guardian_active": true,
+    "post_purge_residues": 0
+  },
+  "ubuntu_2604": {
+    "release": "Ubuntu 26.04 LTS",
+    "boot_id_before": "c923bde9-21ff-45e2-a756-92ed82b428c8",
+    "boot_id_after": "4e4fddf3-9b29-46c0-aed8-517a30b8b8c4",
+    "notification_latency_us": {"count": 16, "p50": 161, "p95": 5130, "p99": 5130},
+    "guardian_teardown_us": 447,
+    "post_reboot_guardian_active": true,
+    "post_reboot_system_state": "degraded",
+    "unrelated_failed_unit": "grub2-common.service (virtual fd0 I/O error)",
+    "post_purge_residues": 0
+  },
+  "criteria": {
+    "disabled_by_default": true,
+    "authenticated_revision_pid_pgid_handoff": true,
+    "replay_stale_revision_and_bad_hmac_rejected": true,
+    "loopback_allowed": true,
+    "external_protected_connect_denied_eacces": true,
+    "unregistered_external_connect_allowed": true,
+    "worker_recovered_without_fail_open": true,
+    "restart_budget_teardown_scoped": true,
+    "guardian_death_teardown_under_50ms_scoped": true,
+    "guest_reboot_restored_guardian": true,
+    "latencies_recorded": true,
+    "purge_zero_residues": true
+  },
+  "protected_fail_open_decisions": 0,
+  "supported": true,
+  "scope": "Narrow opt-in exact-launch laboratory enforcement only"
+}

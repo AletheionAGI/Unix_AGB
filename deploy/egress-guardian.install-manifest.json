@@ -15,9 +15,14 @@
     {
       "source": "deploy/agb-egress-guardian",
       "destination": "/usr/libexec/unix-agb/agb-egress-guardian"
+    },
+    {
+      "source": "deploy/agb-egress-launch",
+      "destination": "/usr/libexec/unix-agb/agb-egress-launch"
     }
   ],
   "activation_marker": "/etc/unix-agb/egress-guardian.enabled",
   "runtime": "/usr/libexec/unix-agb/agb-egress-guardian",
-  "enforcement_active": false
+  "enforcement_active": true,
+  "scope": "opt-in exact-launch laboratory only"
 }
