@@ -37,7 +37,7 @@ therefore share one execution path and one scientific result format.
 ### Planned process explanation panel
 
 A later GUI increment may make each supervised-process row selectable and ask
-a local Ollama model (initial candidate: `qwen3.5:0.8b`) to explain the selected
+a local Ollama model (initial candidate: `qwen3.8:27b`) to explain the selected
 evidence package in operator language. The panel should answer four bounded
 questions: what the executable normally is, what the observed operations mean,
 where the process identity originated, and which recorded destinations it
